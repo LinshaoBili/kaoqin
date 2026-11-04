@@ -103,90 +103,165 @@
   // ============================================================ 编辑器状态
   var editor = null;
 
+  /** 每个「节」一份标记：marks[1] = 第一节，marks[2] = 第二节（连堂课才有第二份） */
+  function periodMarks(p) {
+    if (!editor.marks[p]) editor.marks[p] = {};
+    return editor.marks[p];
+  }
+  /** 当前正在点的那个「节」的标记表 */
+  function activeMarks() { return periodMarks(editor.period); }
+  function periodCount() { return editor.doublePeriod ? 2 : 1; }
+
   function newEditor() {
     var def = DB.settings.defaultClassId || (DB.classes[0] ? DB.classes[0].id : 0);
     editor = {
-      sessionId: null, date: today(), classId: def,
+      sessionId: null, sids: [], pairId: 0, date: today(), classId: def,
       courseId: (DB.courses[0] ? DB.courses[0].id : 0),
-      locationId: 0, timeId: (DB.times[0] ? DB.times[0].id : 0), marks: {}
+      locationId: 0, timeId: (DB.times[0] ? DB.times[0].id : 0),
+      timeId2: (DB.times[1] ? DB.times[1].id : 0), doublePeriod: false,
+      period: 1, half: 1, marks: { 1: {}, 2: {} },
+      statusFilter: 'ABSENT'
     };
     ensureMarks();
   }
-  /** 名单变化时补齐 marks；默认「未标记」，保存时按缺勤落库（与原生端一致） */
-  function ensureMarks() {
-    rollcallRoster(editor.classId, editor.courseId).roster.forEach(function (s) {
-      if (!editor.marks[s.id]) {
-        var lv = KQ.activeLeave(DB.leaveNotes, s.id, editor.date);
-        editor.marks[s.id] = { first: lv ? lv.status : '', second: 'INHERIT', checkIn: '', byLeave: !!lv };
-      }
-    });
+
+  /** 新建一名学生的默认标记：当天有生效假条 → 假条状态；否则**缺勤**（与考勤端一致，名单出现即全员缺勤） */
+  function defaultMark(studentId) {
+    var lv = KQ.activeLeave(DB.leaveNotes, studentId, editor.date);
+    return { first: lv ? lv.status : 'ABSENT', second: 'INHERIT', checkIn: '', leaveTime: '', byLeave: !!lv };
   }
+
+  /** 名单变化时补齐 marks（已标记的不动） */
+  function ensureMarks() {
+    var roster = rollcallRoster(editor.classId, editor.courseId).roster;
+    for (var p = 1; p <= periodCount(); p++) {
+      var M = periodMarks(p);
+      roster.forEach(function (s) { if (!M[s.id]) M[s.id] = defaultMark(s.id); });
+    }
+  }
+
+  /** 取某学生当前节的标记（不存在则按默认值创建） */
+  function markOf(studentId) {
+    var M = activeMarks();
+    if (!M[studentId]) M[studentId] = defaultMark(studentId);
+    return M[studentId];
+  }
+
+  /** 清空标记（换班级/课程/日期时调用）——重新按默认缺勤填充 */
+  function resetMarks() {
+    editor.marks = { 1: {}, 2: {} };
+    ensureMarks();
+  }
+
   function loadEditorFromSession(id) {
     var s = byId(DB.sessions, id);
     if (!s) return false;
+    // 连堂课：同一 pairId 的两条会话按 id 升序即「第一节 / 第二节」
+    var pair = s.pairId ? DB.sessions.filter(function (x) { return x.pairId === s.pairId; })
+      .sort(function (a, b) { return a.id - b.id; }) : [];
+    var list = pair.length ? pair : [s];
     editor = {
-      sessionId: id, date: s.date, classId: s.classId, courseId: s.courseId,
-      locationId: s.locationId, timeId: s.timeId, marks: {}
+      sessionId: id, sids: list.map(function (x) { return x.id; }), pairId: s.pairId || 0,
+      date: s.date, classId: s.classId, courseId: s.courseId,
+      locationId: s.locationId, timeId: s.timeId,
+      timeId2: list[1] ? list[1].timeId : 0, doublePeriod: list.length > 1,
+      // 从「第二节」进入时直接落在第二节（两节按 id 升序即第 1/2 节）
+      period: Math.max(1, list.findIndex(function (x) { return x.id === id; }) + 1), half: 1,
+      marks: { 1: {}, 2: {} },
+      // 编辑历史会话默认「全部」：已标记的缺勤才是多数，缺勤筛选会隐藏大多数学生
+      statusFilter: 'ALL'
     };
-    var byS = {};
-    sessionRecords(id).forEach(function (r) { (byS[r.studentId] = byS[r.studentId] || {})[r.half] = r; });
-    Object.keys(byS).forEach(function (sid) {
-      var f = byS[sid][1], sec = byS[sid][2];
-      var first = f ? f.status : '';
-      var mark = 'INHERIT';
-      if (sec) mark = sec.status;
-      else if (first === 'EARLY_LEAVE') mark = 'NOT_RECORDED';
-      editor.marks[sid] = { first: first, second: mark, checkIn: f ? (f.checkInTime || '') : '', byLeave: false };
+    list.forEach(function (ses, i) {
+      var byS = {};
+      sessionRecords(ses.id).forEach(function (r) { (byS[r.studentId] = byS[r.studentId] || {})[r.half] = r; });
+      Object.keys(byS).forEach(function (sid) {
+        var f = byS[sid][1], sec = byS[sid][2];
+        var first = f ? f.status : 'ABSENT';
+        editor.marks[i + 1][sid] = {
+          first: first,
+          second: sec ? KQ.markOf(first, sec.status) : KQ.markOf(first, null),
+          checkIn: f ? (f.checkInTime || '') : '',
+          leaveTime: f ? (f.leaveTime || '') : '',
+          byLeave: false
+        };
+      });
     });
     ensureMarks();
     return true;
   }
 
   // ============================================================ 保存会话
+  /**
+   * 保存点名：连堂课写**两条会话**（第一节 / 第二节），用 pairId 关联；
+   * 每条会话内部再按半节拆记录 —— 合计四段：节1上/节1下/节2上/节2下。
+   */
   function saveEditor() {
     if (!editor.classId) { toast('请先选择班级'); return; }
     if (!editor.courseId) { toast('请先在「管理 → 课程」添加并选择课程'); return; }
     var cls = byId(DB.classes, editor.classId), course = byId(DB.courses, editor.courseId);
-    var loc = byId(DB.locations, editor.locationId), time = byId(DB.times, editor.timeId);
-    var sid = editor.sessionId || nid();
-    DB.sessions = DB.sessions.filter(function (s) { return s.id !== sid; });
-    DB.records = DB.records.filter(function (r) { return r.sessionId !== sid; });
-    DB.sessions.push({
-      id: sid, classId: editor.classId, courseId: editor.courseId, locationId: editor.locationId,
-      timeId: editor.timeId, date: editor.date, remark: '', createdAt: Date.now(),
-      className: cls ? cls.name : '', courseName: course ? course.name : '',
-      locationName: loc ? loc.name : '', timePeriod: time ? time.period : ''
-    });
+    var loc = byId(DB.locations, editor.locationId);
+    var periods = periodCount();
+    if (periods === 2 && !editor.timeId2) { toast('连堂课请先选择第二节的节次'); return; }
+
+    // 本次要写的会话 id：编辑时沿用旧 id（缺的补新），新点名逐节新建
+    var sids = [];
+    for (var p = 1; p <= periods; p++) sids[p] = editor.sids[p - 1] || nid();
+    var pairId = periods === 2 ? (editor.pairId || sids[1]) : 0;
+    var stale = editor.sids.slice();
+
+    DB.sessions = DB.sessions.filter(function (s) { return stale.indexOf(s.id) < 0; });
+    DB.records = DB.records.filter(function (r) { return stale.indexOf(r.sessionId) < 0; });
+
     var roster = rollcallRoster(editor.classId, editor.courseId).roster;
     var written = 0;
-    roster.forEach(function (s) {
-      var m = editor.marks[s.id];
-      if (!m) return;
-      var first = m.first || 'ABSENT';   // 未标记 → 缺勤
-      DB.records.push({
-        id: nid(), sessionId: sid, studentId: s.id, status: first, remark: '',
-        studentName: s.name, studentNo: s.studentNo, half: 1,
-        checkInTime: m.checkIn || '', leaveTime: first === 'EARLY_LEAVE' ? (m.leaveTime || '') : ''
+    for (var q = 1; q <= periods; q++) {
+      var sid = sids[q];
+      var timeId = q === 1 ? editor.timeId : editor.timeId2;
+      var time = byId(DB.times, timeId);
+      DB.sessions.push({
+        id: sid, classId: editor.classId, courseId: editor.courseId, locationId: editor.locationId,
+        timeId: timeId, date: editor.date, remark: '', createdAt: Date.now(), pairId: pairId,
+        className: cls ? cls.name : '', courseName: course ? course.name : '',
+        // 地点快照只存「上课地点」名，与考勤端一致（科室只是选择时的二级定位，不进快照）
+        locationName: loc ? loc.name : '',
+        timePeriod: time ? time.period : ''
       });
-      written++;
-      var sec = resolveSecond(first, m.second);
-      if (sec) {
+      var M = periodMarks(q);
+      roster.forEach(function (s) {
+        var m = M[s.id];
+        if (!m) return;
+        var first = m.first || 'ABSENT';   // 未标记 → 缺勤
         DB.records.push({
-          id: nid(), sessionId: sid, studentId: s.id, status: sec, remark: '',
-          studentName: s.name, studentNo: s.studentNo, half: 2, checkInTime: '', leaveTime: ''
+          id: nid(), sessionId: sid, studentId: s.id, status: first, remark: '',
+          studentName: s.name, studentNo: s.studentNo, half: 1,
+          checkInTime: m.checkIn || '', leaveTime: first === 'EARLY_LEAVE' ? (m.leaveTime || '') : ''
         });
         written++;
-      }
-    });
+        var sec = KQ.resolveSecond(first, m.second);
+        if (sec) {
+          DB.records.push({
+            id: nid(), sessionId: sid, studentId: s.id, status: sec, remark: '',
+            studentName: s.name, studentNo: s.studentNo, half: 2, checkInTime: '', leaveTime: ''
+          });
+          written++;
+        }
+      });
+    }
     save();
-    toast('已保存 ' + roster.length + ' 人（' + written + ' 条记录）');
+    toast('已保存 ' + roster.length + ' 人 × ' + periods + ' 节（' + written + ' 条记录）');
     goto('#/records');
   }
 
   function deleteSession(id) {
     confirmSheet('删除考勤', '确定删除这次考勤记录吗？此操作不可恢复。', function () {
-      DB.sessions = DB.sessions.filter(function (s) { return s.id !== id; });
+      var s = byId(DB.sessions, id);
+      var pairId = s ? s.pairId : 0;
+      DB.sessions = DB.sessions.filter(function (x) { return x.id !== id; });
       DB.records = DB.records.filter(function (r) { return r.sessionId !== id; });
+      // 连堂：删掉其中一节后，剩下那节退回「单节」，不留一个只剩一节的分组
+      if (pairId) {
+        DB.sessions.forEach(function (x) { if (x.pairId === pairId) x.pairId = 0; });
+      }
       save(); closeSheet(); toast('已删除'); goto('#/records');
     });
   }
@@ -252,7 +327,9 @@
           studentNo: r.studentNo || EMPTY, name: r.studentName || EMPTY,
           halfLabel: r.half === 2 ? '下半节' : '上半节',
           checkIn: r.checkInTime || EMPTY, checkOut: r.leaveTime || EMPTY,
-          statusLabel: label(r.status), duration: dur, abnormal: r.remark || EMPTY
+          statusLabel: label(r.status), duration: dur, abnormal: r.remark || EMPTY,
+          // 连堂：只在块标题标一个「连堂」，列结构保持 14 列不变（与考勤端导出一致）
+          pairId: s.pairId || 0
         });
       });
     });
@@ -425,6 +502,32 @@
   }
 
   // ============================================================ 视图：点名
+  /** 地点分组：同名「上课地点」合并为一级，组内「所属科室」为二级（与考勤端一致） */
+  function locGroups() {
+    var order = [], map = {};
+    DB.locations.slice().sort(function (a, b) {
+      return (a.sortOrder || 0) - (b.sortOrder || 0) || (a.id - b.id);
+    }).forEach(function (l) {
+      if (!map[l.name]) { map[l.name] = []; order.push(l.name); }
+      map[l.name].push(l);
+    });
+    return { order: order, map: map };
+  }
+  function deptsOf(name) {
+    var g = locGroups().map[name] || [], out = [];
+    g.forEach(function (l) { if (l.department && out.indexOf(l.department) < 0) out.push(l.department); });
+    return out;
+  }
+  /** 当前正在点的半节的「归类状态」：下半节「不记录」按缺勤呈现（否则老师会找不到该学生） */
+  function filterStatusOf(studentId) {
+    var m = markOf(studentId);
+    if (editor.half === 2) {
+      var sec = KQ.resolveSecond(m.first, m.second);
+      return sec || 'ABSENT';
+    }
+    return m.first || 'ABSENT';
+  }
+
   function viewRollcall() {
     if (!editor) newEditor();
     ensureMarks();
@@ -435,60 +538,116 @@
     var picked = rollcallRoster(editor.classId, editor.courseId);
     var students = picked.roster;
     var hiddenCount = studentsOf(editor.classId).length - students.length;
-    var marked = students.filter(function (s) { return editor.marks[s.id] && editor.marks[s.id].first; }).length;
+    var showDept = !!editor.locationId && deptsOf((byId(DB.locations, editor.locationId) || {}).name || '').length >= 2;
+    var curLoc = byId(DB.locations, editor.locationId);
+    var curLocName = curLoc ? curLoc.name : '';
 
-    var h = topbar(editor.sessionId ? '编辑考勤' : '点名', (byId(DB.classes, editor.classId) || {}).name || '') +
+    var h = topbar((editor.sessionId ? '编辑考勤' : '点名') + (editor.doublePeriod ? ' · 连堂' : ''),
+      (byId(DB.classes, editor.classId) || {}).name || '') +
       '<div class="card">' +
       '<div class="grid2">' +
       sel('班级', 'classId', DB.classes.map(function (c) { return [c.id, c.name]; }), editor.classId) +
       sel('课程', 'courseId', DB.courses.map(function (c) { return [c.id, c.name]; }), editor.courseId) +
       '</div><div class="grid2" style="margin-top:8px">' +
-      sel('地点', 'locationId', [[0, '未设置']].concat(DB.locations.map(function (c) { return [c.id, c.name]; })), editor.locationId) +
-      sel('节次', 'timeId', [[0, '未设置']].concat(DB.times.map(function (c) { return [c.id, c.period]; })), editor.timeId) +
-      '</div><div style="margin-top:8px"><label class="f">日期</label>' +
+      sel('上课地点', 'locName', [[0, '未设置']].concat(locGroups().order.map(function (n) { return [n, n]; })), curLocName) +
+      sel(editor.doublePeriod ? '第一节节次' : '节次', 'timeId',
+        [[0, '未设置']].concat(DB.times.map(function (c) { return [c.id, c.period]; })), editor.timeId) +
+      '</div>' +
+      (showDept ? '<div style="margin-top:8px">' +
+        sel('所属科室', 'locDept', deptsOf(curLocName).map(function (d) { return [d, d]; }), curLoc ? curLoc.department : '') +
+        '</div>' : '') +
+      '<div style="margin-top:8px"><label class="f">日期</label>' +
       '<input type="date" data-change="date" value="' + esc(editor.date) + '"></div>' +
+      '<div class="row" style="margin-top:10px">' +
+      '<div class="grow tiny muted">连堂课：同一班级/课程/地点，两节连上一起点名（如 1-2 节 + 3-4 节）</div>' +
+      '<button class="btn sm ' + (editor.doublePeriod ? '' : 'ghost') + '" data-act="toggleDouble">' +
+      (editor.doublePeriod ? '已开启' : '开启') + '</button>' +
+      '</div>' +
+      (editor.doublePeriod ? '<div style="margin-top:8px">' +
+        sel('第二节节次', 'timeId2', [[0, '未设置']].concat(DB.times.map(function (c) { return [c.id, c.period]; })), editor.timeId2) +
+        (editor.sessionId ? '<p class="tiny muted" style="margin:6px 0 0">关闭连堂后保存，会删除第二节已保存的考勤记录</p>' : '') +
+        '</div>' : '') +
       '</div>';
 
     if (!students.length) {
       return h + '<div class="card"><div class="empty">这个班级还没有可点名的学生<br>先到「管理 → 学生」添加学生</div></div>';
     }
 
-    h += '<div class="card"><div class="row"><div class="grow small muted">已标记 ' + marked + ' / ' + students.length +
-      ' 人 · 未标记按缺勤' + (hiddenCount > 0 ? ' · 已隐藏 ' + hiddenCount + ' 人' : '') + '</div>' +
+    // ---------- 分段切换：节（1/2）× 半节（上/下）
+    var t1 = byId(DB.times, editor.timeId), t2 = byId(DB.times, editor.timeId2);
+    h += '<div class="card">';
+    if (editor.doublePeriod) {
+      h += '<div class="seg">' +
+        '<button class="' + (editor.period === 1 ? 'on' : '') + '" data-act="period" data-v="1">第1节' +
+        (t1 ? '<br><span class="tiny">' + esc(t1.period) + '</span>' : '') + '</button>' +
+        '<button class="' + (editor.period === 2 ? 'on' : '') + '" data-act="period" data-v="2">第2节' +
+        (t2 ? '<br><span class="tiny">' + esc(t2.period) + '</span>' : '') + '</button>' +
+        '</div>';
+    }
+    h += '<div class="seg" style="margin-top:6px">' +
+      '<button class="' + (editor.half === 1 ? 'on' : '') + '" data-act="half" data-v="1">上半节</button>' +
+      '<button class="' + (editor.half === 2 ? 'on' : '') + '" data-act="half" data-v="2">下半节</button>' +
+      '</div>';
+
+    var counts = {};
+    KQ.STATUS_FILTERS.forEach(function (f) {
+      counts[f.key] = students.filter(function (s) { return KQ.matchesStatusFilter(f.key, filterStatusOf(s.id)); }).length;
+    });
+    h += '<div class="chips" style="margin-top:10px">' +
+      KQ.STATUS_FILTERS.map(function (f) {
+        return '<span class="chip' + (editor.statusFilter === f.key ? ' on' : '') + '" data-s="' + f.key + '" ' +
+          'data-act="filter" data-v="' + f.key + '">' + f.label + ' ' + counts[f.key] + '</span>';
+      }).join('') + '</div>';
+
+    h += '<div class="row" style="margin-top:10px"><div class="grow small muted">共 ' + students.length +
+      ' 人' + (hiddenCount > 0 ? ' · 已隐藏 ' + hiddenCount + ' 人' : '') + ' · 默认缺勤，未标记即按缺勤保存</div>' +
       '<button class="btn sm ghost" data-act="allPresent">全部已到</button>' +
-      '<button class="btn sm ghost" data-act="allAbsent">全部缺勤</button>' +
-      '</div><p class="tiny muted" style="margin:8px 0 0">当天的请假条会自动带入；扫码可记「已到」并写入签到时刻。</p></div>';
+      '<button class="btn sm ghost" data-act="allAbsent">全部缺勤</button></div>' +
+      '<p class="tiny muted" style="margin:8px 0 0">当天的请假条会自动带入；扫码可记「已到」并写入签到时刻。' +
+      (editor.doublePeriod ? '两节的标记各自独立，会分别落库。' : '') + '</p>';
+    h += '</div>';
+
+    var shown = students.filter(function (s) { return KQ.matchesStatusFilter(editor.statusFilter, filterStatusOf(s.id)); });
+    if (!shown.length) {
+      h += '<div class="empty">当前筛选「' + esc(KQ.filterLabel(editor.statusFilter)) + '」没有学生<br>切到「全部」可查看完整名单</div>';
+    }
 
     h += '<div class="list">';
-    students.forEach(function (s) {
-      var m = editor.marks[s.id] || { first: '', second: 'INHERIT', checkIn: '' };
-      var secEff = m.first ? resolveSecond(m.first, m.second) : null;
+    shown.forEach(function (s) {
+      var m = markOf(s.id);
+      var secEff = KQ.resolveSecond(m.first, m.second);
       var lv = KQ.activeLeave(DB.leaveNotes, s.id, editor.date);
       h += '<div class="item" style="cursor:default">' +
         '<div class="row"><div class="grow"><span class="t">' + esc(s.name) + '</span>' +
         '<span class="m" style="margin-left:8px">' + esc(s.studentNo) + '</span></div>' +
         (picked.blackIds[s.id] ? '<span class="badge LEAVE">黑</span>' : '') +
         (picked.whiteIds[s.id] ? '<span class="badge PRESENT">白</span>' : '') +
-        (m.checkIn ? '<span class="tiny muted">签到 ' + esc(m.checkIn) + '</span>' : '') + '</div>' +
+        '<span class="badge ' + (secEff ? esc(secEff) : 'ABSENT') + '">' + esc(label(m.first)) + ' / ' +
+        (secEff ? esc(label(secEff)) : '不记录') + '</span></div>' +
         (lv ? '<div class="m" style="color:var(--blue)">假条：' + esc(label(lv.status)) + ' · ' + esc(KQ.leaveSpanText(lv)) + '</div>' : '') +
+        (m.checkIn ? '<div class="m">签到 ' + esc(m.checkIn) + '</div>' : '') +
         '<div class="chips" style="margin-top:8px">';
-      MAIN.forEach(function (k) {
-        h += '<span class="chip' + (m.first === k ? ' on' : '') + '" data-s="' + k + '" data-act="setFirst" data-id="' + s.id + '" data-v="' + k + '">' + label(k) + '</span>';
-      });
-      h += '<span class="chip' + (isLeave(m.first) ? ' on' : '') + '" data-s="SICK_LEAVE" data-act="pickLeave" data-id="' + s.id + '">' +
-        (isLeave(m.first) ? label(m.first) : '请假') + '</span>';
-      h += '<span class="chip mute' + (!m.first ? ' on' : '') + '" data-act="clearMark" data-id="' + s.id + '">未标记</span>';
+
+      if (editor.half === 1) {
+        MAIN.forEach(function (k) {
+          h += '<span class="chip' + (m.first === k ? ' on' : '') + '" data-s="' + k + '" data-act="setFirst" data-id="' + s.id + '" data-v="' + k + '">' + label(k) + '</span>';
+        });
+        h += '<span class="chip' + (isLeave(m.first) ? ' on' : '') + '" data-s="SICK_LEAVE" data-act="pickLeave" data-id="' + s.id + '">' +
+          (isLeave(m.first) ? label(m.first) : '请假') + '</span>';
+      } else {
+        h += '<span class="chip mute' + (m.second === 'INHERIT' ? ' on' : '') + '" data-act="setSecond" data-id="' + s.id + '" data-v="INHERIT">跟随上半节</span>' +
+          '<span class="chip mute' + (m.second === 'NOT_RECORDED' ? ' on' : '') + '" data-act="setSecond" data-id="' + s.id + '" data-v="NOT_RECORDED">不记录</span>';
+        MAIN.filter(function (k) { return k !== 'EARLY_LEAVE'; }).forEach(function (k) {
+          var on = m.second !== 'INHERIT' && m.second !== 'NOT_RECORDED' && m.second === k;
+          h += '<span class="chip' + (on ? ' on' : '') + '" data-s="' + k + '" data-act="setSecond" data-id="' + s.id + '" data-v="' + k + '">' + label(k) + '</span>';
+        });
+      }
       h += '</div>';
-      h += '<div class="row" style="margin-top:7px">' +
-        '<span class="tiny muted" style="width:64px">下半节</span>' +
-        '<select style="flex:1;padding:7px 10px;font-size:13px" data-change="second" data-id="' + s.id + '"' +
-        (m.first === 'EARLY_LEAVE' ? ' disabled' : '') + '>' +
-        opt('INHERIT', '跟随上半节', m.second) +
-        opt('NOT_RECORDED', '不记录', m.second) +
-        STATUSES.map(function (st) { return opt(st.key, st.label, m.second); }).join('') +
-        '</select>' +
-        '<span class="tiny muted" style="width:76px;text-align:right">' + (secEff ? esc(label(secEff)) : '不记录') + '</span>' +
-        '</div>';
+      if (editor.half === 2) {
+        h += '<p class="tiny muted" style="margin:7px 0 0">' +
+          (m.first === 'EARLY_LEAVE' ? '上半节早退 → 下半节默认不记录' :
+            m.second === 'INHERIT' ? '继承上半节：迟到按已到、早退不记录' : '已单独设置下半节') + '</p>';
+      }
       h += '</div>';
     });
     h += '</div>';
@@ -542,7 +701,8 @@
         '<div class="row"><div class="t grow">' + esc(fmtDate(s.date)) + '</div>' +
         '<div class="t" style="color:var(--blue)">' + (rate == null ? '无记录' : '到课 ' + rate + '%') + '</div></div>' +
         '<div class="m">' + esc(s.courseName || '未选课程') + ' · ' + esc(s.className || '未选班级') + '</div>' +
-        '<div class="m">' + esc((s.locationName || '') + (s.timePeriod ? (s.locationName ? ' · ' : '') + s.timePeriod : '') || '未设置地点与节次') + '</div>' +
+        '<div class="m">' + esc([s.pairId ? '连堂' : '', s.locationName || '', s.timePeriod || '']
+          .filter(Boolean).join(' · ') || '未设置地点与节次') + '</div>' +
         '<div class="b chips">';
       ['PRESENT', 'LATE', 'EARLY_LEAVE', 'ABSENT'].forEach(function (k) {
         if (counts[k]) h += badge(k) + '<span class="tiny muted" style="margin-left:2px;margin-right:6px">' + counts[k] + '</span>';
@@ -563,11 +723,19 @@
         String(a.studentNo).localeCompare(String(b.studentNo)) || a.half - b.half;
     });
     var sum = KQ.summarize(recs);
+    // 连堂：标出这是两节中的第几节（两节是两条会话，pairId 相同、id 升序即第 1/2 节）
+    var pairNote = '';
+    if (s.pairId) {
+      var pair = DB.sessions.filter(function (x) { return x.pairId === s.pairId; })
+        .sort(function (a, b) { return a.id - b.id; });
+      pairNote = '连堂（第 ' + (pair.findIndex(function (x) { return x.id === s.id; }) + 1) + ' / ' + pair.length + ' 节）';
+    }
     var h = topbar('考勤详情', fmtDate(s.date)) +
       '<div class="card">' +
       '<div class="statline"><span class="muted">课程</span><span class="k">' + esc(s.courseName || '未选') + '</span></div>' +
       '<div class="statline"><span class="muted">班级</span><span class="k">' + esc(s.className || '未选') + '</span></div>' +
       '<div class="statline"><span class="muted">地点 / 节次</span><span class="k">' + esc((s.locationName || '未设置') + ' · ' + (s.timePeriod || '未设置')) + '</span></div>' +
+      (pairNote ? '<div class="statline"><span class="muted">连堂</span><span class="k">' + esc(pairNote) + '</span></div>' : '') +
       '<div class="statline"><span class="muted">人次 / 出勤率</span><span class="k">' + sum.total + ' · ' + pct(sum.rate) + '</span></div>' +
       '</div>' +
       '<div class="row" style="gap:8px;margin-bottom:12px">' +
@@ -981,12 +1149,23 @@
   });
 
   function handleChange(kind, id, val) {
-    if (kind === 'classId') { editor.classId = +val; ensureMarks(); render(); }
-    else if (kind === 'courseId') { editor.courseId = +val; ensureMarks(); render(); }
-    else if (kind === 'locationId') { editor.locationId = +val; render(); }
+    if (kind === 'classId') { editor.classId = +val; editor.period = 1; resetMarks(); render(); }
+    else if (kind === 'courseId') { editor.courseId = +val; editor.period = 1; resetMarks(); render(); }
+    else if (kind === 'locName') {
+      // 一级「上课地点」选定后，默认取该地点名下第一条（组内多科室再用二级选择切换）
+      var nm = String(val);
+      var first = nm === '0' ? null : DB.locations.filter(function (l) { return l.name === nm; })[0];
+      editor.locationId = first ? first.id : 0;
+      render();
+    } else if (kind === 'locDept') {
+      var cur = byId(DB.locations, editor.locationId);
+      var hit = cur ? DB.locations.filter(function (l) { return l.name === cur.name && l.department === val; })[0] : null;
+      if (hit) editor.locationId = hit.id;
+      render();
+    }
     else if (kind === 'timeId') { editor.timeId = +val; render(); }
-    else if (kind === 'date') { editor.date = val; editor.marks = {}; ensureMarks(); render(); }
-    else if (kind === 'second') { editor.marks[id].second = val; render(); }
+    else if (kind === 'timeId2') { editor.timeId2 = +val; render(); }
+    else if (kind === 'date') { editor.date = val; resetMarks(); render(); }
     else if (kind === 'rfClass') { rf.classId = +val; render(); }
     else if (kind === 'rfCourse') { rf.courseId = +val; render(); }
     else if (kind === 'rfLocation') { rf.locationId = +val; render(); }
@@ -1014,22 +1193,53 @@
       case 'exportScores': doExportScores(); break;
       case 'allPresent': case 'allAbsent': {
         var st = act === 'allPresent' ? 'PRESENT' : 'ABSENT';
+        var M = activeMarks();
         rollcallRoster(editor.classId, editor.courseId).roster.forEach(function (s) {
-          if (!editor.marks[s.id]) editor.marks[s.id] = { first: st, second: 'INHERIT', checkIn: '', byLeave: false };
-          else { editor.marks[s.id].first = st; editor.marks[s.id].byLeave = false; }
+          var mm = M[s.id] || (M[s.id] = defaultMark(s.id));
+          if (editor.half === 1) {
+            mm.first = st; mm.byLeave = false;
+            // 一键改上半节时清掉下半节的单独设置，避免「已到 / 早退」这种没人表达过的组合
+            mm.second = st === 'EARLY_LEAVE' ? 'NOT_RECORDED' : 'INHERIT';
+          } else {
+            var rr = KQ.applyToSecond(mm.first, st);
+            mm.first = rr.first; mm.second = rr.second;
+          }
         });
         render(); break;
       }
       case 'setFirst': {
-        var m = editor.marks[id]; m.first = v; m.byLeave = false;
+        var m = markOf(id); m.first = v; m.byLeave = false;
         if (v === 'EARLY_LEAVE') m.second = 'NOT_RECORDED';
         else if (m.second === 'NOT_RECORDED') m.second = 'INHERIT';
         render(); break;
       }
-      case 'clearMark': { var mm = editor.marks[id]; mm.first = ''; mm.second = 'INHERIT'; mm.byLeave = false; render(); break; }
+      case 'setSecond': {
+        var ms = markOf(id);
+        if (v === 'INHERIT' || v === 'NOT_RECORDED') ms.second = v;
+        else {
+          // 与考勤端同一条规则：早退上移到上半节、与继承结果相同则回存 INHERIT
+          var ap = KQ.applyToSecond(ms.first, v);
+          ms.first = ap.first; ms.second = ap.second;
+        }
+        render(); break;
+      }
+      case 'toggleDouble': {
+        editor.doublePeriod = !editor.doublePeriod;
+        if (!editor.doublePeriod) editor.period = 1;
+        if (editor.doublePeriod && !editor.timeId2) {
+          var idx = 0;
+          DB.times.forEach(function (t, i) { if (t.id === editor.timeId) idx = i; });
+          var nxt = DB.times[idx + 1] || DB.times[0];
+          editor.timeId2 = nxt ? nxt.id : 0;
+        }
+        ensureMarks(); render(); break;
+      }
+      case 'period': editor.period = +v; render(); break;
+      case 'half': editor.half = +v; render(); break;
+      case 'filter': editor.statusFilter = v; render(); break;
       case 'pickLeave': openLeavePicker(id); break;
       case 'setLeave': {
-        var m2 = editor.marks[id]; m2.first = v; m2.byLeave = false;
+        var m2 = markOf(id); m2.first = v; m2.byLeave = false;
         if (m2.second === 'NOT_RECORDED') m2.second = 'INHERIT';
         closeSheet(); render(); break;
       }
@@ -1396,9 +1606,11 @@
     var roster = rollcallRoster(editor.classId, editor.courseId).roster;
     var s = roster.filter(function (x) { return String(x.studentNo).toUpperCase() === parsed.studentNo; })[0];
     if (!s) { msg.textContent = '本班名单里没有学号 ' + parsed.studentNo; return; }
-    var m = editor.marks[s.id] || (editor.marks[s.id] = { first: '', second: 'INHERIT', checkIn: '', byLeave: false });
+    var m = markOf(s.id);
     m.first = 'PRESENT'; m.checkIn = nowHHMM(); m.byLeave = false;
-    stopScan(); closeSheet(); render(); toast('已记 ' + s.name + ' 已到 ' + m.checkIn);
+    if (m.second === 'NOT_RECORDED') m.second = 'INHERIT';
+    stopScan(); closeSheet(); render();
+    toast('已记 ' + s.name + ' 已到 ' + m.checkIn + (editor.doublePeriod ? '（第' + editor.period + '节）' : ''));
   }
   function stopScan() {
     if (!scan) return;

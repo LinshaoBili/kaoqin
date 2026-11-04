@@ -72,6 +72,44 @@
     return inheritedStatus(first);
   }
 
+  /**
+   * 在下半节设置某个状态后的结果：{ first, second }（与 HalfStatus.applyToSecond 同构）
+   * - 早退 → 上移到上半节，下半节「不记录」；
+   * - 与「继承结果」相同 → 存回 INHERIT，不制造「已单独设置」的假象；
+   * - 其余 → 显式写进下半节。
+   */
+  function applyToSecond(first, status) {
+    if (status === 'EARLY_LEAVE') return { first: 'EARLY_LEAVE', second: 'NOT_RECORDED' };
+    if (status === inheritedStatus(first)) return { first: first, second: 'INHERIT' };
+    return { first: first, second: status };
+  }
+
+  /** 由「上半节 + 下半节实际记录」反推下半节标记（与 HalfStatus.markOf 同构） */
+  function markOf(first, secondRecorded) {
+    var inh = inheritedStatus(first);
+    if (secondRecorded == null) return inh == null ? 'NOT_RECORDED' : 'INHERIT';
+    return secondRecorded === inh ? 'INHERIT' : secondRecorded;
+  }
+
+  /** 点名页状态筛选（与 Android StatusFilter 一致：请假 = 病/事/公假合并） */
+  var STATUS_FILTERS = [
+    { key: 'ALL', label: '全部' },
+    { key: 'PRESENT', label: '已到' },
+    { key: 'ABSENT', label: '缺勤' },
+    { key: 'LATE', label: '迟到' },
+    { key: 'EARLY_LEAVE', label: '早退' },
+    { key: 'LEAVE', label: '请假' }
+  ];
+  function matchesStatusFilter(filter, status) {
+    if (filter === 'ALL' || !filter) return true;
+    if (filter === 'LEAVE') return isLeave(status);
+    return status === filter;
+  }
+  function filterLabel(k) {
+    for (var i = 0; i < STATUS_FILTERS.length; i++) if (STATUS_FILTERS[i].key === k) return STATUS_FILTERS[i].label;
+    return k || '';
+  }
+
   /** 导出块内状态优先级：缺勤 0 → 早退 1 → 迟到 2 → 请假 3 → 已到 4 */
   function statusPriority(st) { return PRI[st] == null ? 4 : PRI[st]; }
 
@@ -129,7 +167,8 @@
     blocks.forEach(function (b, i) {
       var h = b.rows[0];
       lines.push('');
-      lines.push('# ── 第 ' + (i + 1) + ' 次课 · ' + h.date + ' · ' + h.courseName + ' · ' + h.className + ' · ' + h.locationName + ' · ' + h.period + ' · ' + b.rows.length + ' 条 ──');
+      lines.push('# ── 第 ' + (i + 1) + ' 次课 · ' + h.date + ' · ' + h.courseName + ' · ' + h.className + ' · ' + h.locationName + ' · ' + h.period +
+        (h.pairId ? ' · 连堂' : '') + ' · ' + b.rows.length + ' 条 ──');
       lines.push(csvLine(COLUMNS));
       b.rows.forEach(function (r) {
         lines.push(csvLine([r.studentNo, r.name, r.className, r.major, r.date, r.courseName, r.locationName, r.period,
@@ -377,11 +416,11 @@
     {
       table: 'session', coll: 'sessions', label: '点名会话', order: 9,
       fields: ['id', 'classId', 'courseId', 'locationId', 'timeId', 'date', 'remark', 'createdAt',
-        'className', 'courseName', 'locationName', 'timePeriod'],
-      numeric: ['id', 'classId', 'courseId', 'locationId', 'timeId', 'createdAt'],
+        'className', 'courseName', 'locationName', 'timePeriod', 'pairId'],
+      numeric: ['id', 'classId', 'courseId', 'locationId', 'timeId', 'createdAt', 'pairId'],
       defaults: {
         locationId: 0, timeId: 0, remark: '', createdAt: 0,
-        className: '', courseName: '', locationName: '', timePeriod: ''
+        className: '', courseName: '', locationName: '', timePeriod: '', pairId: 0
       }
     },
     {
@@ -431,6 +470,17 @@
       return {
         id: +l.id || 0, name: l.name || '', department: l.department || '',
         sortOrder: +l.sortOrder || 0, deptOrder: +l.deptOrder || 0
+      };
+    });
+    // 连堂课（v0.3.7）：旧数据的会话没有 pairId —— 一律按「单节」处理（0 = 未配对）
+    out.sessions = out.sessions.map(function (s) {
+      return {
+        id: +s.id || 0, classId: +s.classId || 0, courseId: +s.courseId || 0,
+        locationId: +s.locationId || 0, timeId: +s.timeId || 0, date: s.date || '',
+        remark: s.remark || '', createdAt: +s.createdAt || 0,
+        className: s.className || '', courseName: s.courseName || '',
+        locationName: s.locationName || '', timePeriod: s.timePeriod || '',
+        pairId: +s.pairId || 0
       };
     });
     return out;
@@ -576,6 +626,8 @@
     RULE_TYPES: RULE_TYPES, ABSENCE_PRESETS: ABSENCE_PRESETS, LONG_TERM_END: LONG_TERM_END,
     label: label, ruleLabel: ruleLabel, isLeave: isLeave, isAttended: isAttended,
     inheritedStatus: inheritedStatus, resolveSecond: resolveSecond, statusPriority: statusPriority,
+    applyToSecond: applyToSecond, markOf: markOf,
+    STATUS_FILTERS: STATUS_FILTERS, matchesStatusFilter: matchesStatusFilter, filterLabel: filterLabel,
     // 时间与时长
     p2: p2, minutesOf: minutesOf, hhmmOf: hhmmOf, halfWindows: halfWindows, recordMinutes: recordMinutes,
     // CSV

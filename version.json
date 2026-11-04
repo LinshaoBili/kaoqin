@@ -1,14 +1,13 @@
 {
-  "versionCode": 30,
-  "versionName": "0.0.30",
-  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.0.30-release.apk",
-  "sizeBytes": 4523036,
-  "sha256": "f28ad7ea7163dee472702cffc66c932813cdbbf17072f685426f2428fb8e990e",
+  "versionCode": 31,
+  "versionName": "0.0.31",
+  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.0.31-release.apk",
+  "sizeBytes": 4523888,
+  "sha256": "6eefcf43c66551961b2af0455f145c460c15d335939a7c891608a9b21966c851",
   "publishedAt": "2026-11-04",
   "notes": [
-    "大幅减小安装包体积：开启 R8 压缩与资源收缩，42MB → 约 4.5MB（-89%），功能不变",
-    "移除未使用的 Compose 预览依赖",
-    "新增体积收缩后的反射链离线核验"
+    "更新源新增「重置默认」按钮，误清空后可一键恢复内置地址",
+    "清空更新源后点保存会自动恢复默认，不再丢失链接"
   ],
   "mandatory": false
 }

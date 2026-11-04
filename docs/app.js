@@ -35,26 +35,6 @@
 
   // ---------------------------------------------------------------- 冷静期
 
-  function lockInfo() {
-    if (!state.record) return { locked: false, text: '' };
-    var ms = BindStore.remainingMs(state.record, Date.now());
-    return { locked: ms > 0, text: BindStore.describeRemaining(ms) };
-  }
-
-  /** 锁定状态要"看得见"：按钮置灰 + 明确写出还剩多久，否则学生会以为按钮坏了 */
-  function refreshLock() {
-    var info = lockInfo();
-    var btn = el('changeBtn');
-    if (info.locked) {
-      lockNote.textContent = '学号已锁定，' + info.text + ' 后可更换（防止用别人的学号代签）';
-      lockNote.classList.remove('hide');
-      btn.disabled = true;
-    } else {
-      lockNote.textContent = '';
-      lockNote.classList.add('hide');
-      btn.disabled = false;
-    }
-  }
 
   // ---------------------------------------------------------------- 二维码
 
@@ -64,7 +44,7 @@
    * 静默区（quiet zone）按规范留 4 个模块，并且**画进 canvas 内**而不是靠 CSS padding：
    * 截图/长按保存时 CSS 白边会丢，白边不够就可能扫不出来。
    */
-  function renderQr(text) {
+  function renderQrOn(target, text, cssSize) {
     var qr = qrcode(0, 'M');
     qr.addData(text, 'Byte');
     qr.make();
@@ -73,16 +53,15 @@
     var quiet = 4;
     var total = count + quiet * 2;
 
-    var cssSize = Math.min(Math.min(window.innerWidth, 520) - 72, 360);
     var dpr = window.devicePixelRatio || 1;
     var px = Math.round(cssSize * dpr);
 
-    canvas.width = px;
-    canvas.height = px;
-    canvas.style.width = cssSize + 'px';
-    canvas.style.height = cssSize + 'px';
+    target.width = px;
+    target.height = px;
+    target.style.width = cssSize + 'px';
+    target.style.height = cssSize + 'px';
 
-    var ctx = canvas.getContext('2d');
+    var ctx = target.getContext('2d');
     var cell = px / total;
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, px, px);
@@ -100,6 +79,11 @@
         }
       }
     }
+  }
+
+  function renderQr(text) {
+    var cssSize = Math.min(Math.min(window.innerWidth, 520) - 72, 360);
+    renderQrOn(canvas, text, cssSize);
   }
 
   function showQr(no) {
@@ -156,10 +140,6 @@
   // ---------------------------------------------------------------- 绑定 / 更换
 
   el('bindBtn').addEventListener('click', function () {
-    if (lockInfo().locked) {
-      errBox.textContent = '学号已锁定，暂时不能更改';
-      return;
-    }
     var no = ScanCode.normalize(input.value);
     if (!no) { errBox.textContent = '请输入学号'; return; }
     if (no.length > ScanCode.MAX_NO_LENGTH) {
@@ -184,9 +164,163 @@
   });
 
   el('changeBtn').addEventListener('click', function () {
-    if (lockInfo().locked) return;
-    showBind('');
+    openChange();
   });
+
+  // ---------------------------------------------------------------- 改号流程
+
+  var changeView = el('changeView');
+  var changeTitle = el('changeTitle');
+  var changeBody = el('changeBody');
+  var changeToken = '';
+  var changeMode = '';
+  var scanStream = null;
+
+  el('changeClose').addEventListener('click', function () {
+    stopScan();
+    changeView.classList.add('hide');
+  });
+
+  function openChange() {
+    if (!window.ChangeFlow) {
+      errBox.textContent = '页面脚本没有加载完整，请下拉刷新一次';
+      return;
+    }
+    changeToken = ChangeFlow.generateToken();
+    renderChangeMenu();
+    changeView.classList.remove('hide');
+  }
+
+  function renderChangeMenu() {
+    changeTitle.textContent = '更改学号';
+    changeBody.innerHTML = [
+      '<p class="sub" style="text-align:center">方式一：把申请码给老师扫，老师同意后再扫同意码。</p>',
+      '<div class="change-qr" id="reqQr"></div>',
+      '<button class="primary" id="scanApprovalBtn">扫老师的同意码</button>',
+      '<button class="ghost" id="scanAuthorizeBtn">扫老师的授权码（一步改号）</button>',
+      '<div class="change-err" id="changeErr"></div>'
+    ].join('');
+    renderChangeQr(ChangeFlow.request(state.record.no, changeToken), el('reqQr'));
+    el('scanApprovalBtn').addEventListener('click', function () { startScan('approval'); });
+    el('scanAuthorizeBtn').addEventListener('click', function () { startScan('authorize'); });
+  }
+
+  function renderChangeQr(text, host) {
+    host.innerHTML = '';
+    if (!text) {
+      host.innerHTML = '<p style="text-align:center;color:#000">申请码生成失败</p>';
+      return;
+    }
+    var c = document.createElement('canvas');
+    host.appendChild(c);
+    renderQrOn(c, text, 300);
+  }
+
+  function startScan(mode) {
+    changeMode = mode;
+    changeTitle.textContent = mode === 'approval' ? '扫描老师的同意码' : '扫描老师的授权码';
+    changeBody.innerHTML = [
+      '<div class="scan-box"><video id="scanVideo" playsinline muted></video><canvas id="scanCanvas"></canvas></div>',
+      '<div class="change-err" id="changeErr"></div>',
+      '<button class="ghost" id="scanBackBtn">返回</button>'
+    ].join('');
+    el('scanBackBtn').addEventListener('click', function () {
+      stopScan();
+      renderChangeMenu();
+    });
+    openCamera();
+  }
+
+  function openCamera() {
+    var err = el('changeErr');
+    if (!window.jsQR) { err.textContent = '扫码组件未加载，请下拉刷新'; return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      err.textContent = '当前浏览器不支持摄像头（请用 https 或 Chrome 打开）';
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(function (stream) {
+        scanStream = stream;
+        var video = el('scanVideo');
+        video.srcObject = stream;
+        video.play().catch(function () {});
+        scanLoop();
+      })
+      .catch(function () {
+        err.textContent = '无法打开摄像头，请检查权限';
+      });
+  }
+
+  function scanLoop() {
+    if (!scanStream) return;
+    var video = el('scanVideo');
+    var c = el('scanCanvas');
+    if (video.readyState >= 2) {
+      var w = video.videoWidth, h = video.videoHeight;
+      if (w > 0 && h > 0) {
+        c.width = w;
+        c.height = h;
+        var ctx = c.getContext('2d');
+        ctx.drawImage(video, 0, 0, w, h);
+        var img = ctx.getImageData(0, 0, w, h);
+        var code = window.jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
+        if (code && code.data) {
+          onDecode(code.data);
+          return;
+        }
+      }
+    }
+    requestAnimationFrame(scanLoop);
+  }
+
+  function onDecode(raw) {
+    stopScan();
+    if (changeMode === 'approval') {
+      var p = ChangeFlow.parseApproval(raw);
+      if (!p.ok) { failScan(changeReason(p, 'approval')); return; }
+      if (p.oldNo !== state.record.no) { failScan('这个同意码不是给你的（学号不匹配）'); return; }
+      if (p.token !== changeToken) { failScan('这个同意码不是给这次申请的'); return; }
+      applyNewNo(p.newNo);
+    } else {
+      var a = ChangeFlow.parseAuthorize(raw);
+      if (!a.ok) { failScan(changeReason(a, 'authorize')); return; }
+      applyNewNo(a.newNo);
+    }
+  }
+
+  function changeReason(p, mode) {
+    var kind = mode === 'approval' ? '同意码' : '授权码';
+    if (p.reason === 'badChecksum') return kind + '校验不通过（可能截图不全或抄错）';
+    if (p.reason === 'emptyNo') return kind + '里没有有效学号';
+    return '不是改号' + kind;
+  }
+
+  function failScan(msg) {
+    changeBody.innerHTML = [
+      '<p class="change-err" style="text-align:center">' + msg + '</p>',
+      '<button class="primary" id="scanRetryBtn">重新扫描</button>',
+      '<button class="ghost" id="scanBackBtn2">返回</button>'
+    ].join('');
+    el('scanRetryBtn').addEventListener('click', function () { startScan(changeMode); });
+    el('scanBackBtn2').addEventListener('click', function () { renderChangeMenu(); });
+  }
+
+  function applyNewNo(newNo) {
+    BindStore.save(newNo).then(function (res) {
+      state.record = res.record;
+      state.token = res.token;
+      state.encrypted = res.token.indexOf('P1.') !== 0 && BindStore.supported;
+      changeView.classList.add('hide');
+      showQr(newNo);
+    });
+  }
+
+  function stopScan() {
+    if (scanStream) {
+      scanStream.getTracks().forEach(function (t) { t.stop(); });
+      scanStream = null;
+    }
+  }
 
   // ---------------------------------------------------------------- 备份 / 恢复（加密恢复码）
 

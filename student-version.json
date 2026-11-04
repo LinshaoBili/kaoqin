@@ -1,15 +1,13 @@
 {
-  "versionCode": 45,
-  "versionName": "0.2.5",
+  "versionCode": 46,
+  "versionName": "0.3.0",
   "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQinStudent-release.apk",
   "sizeBytes": 2125957,
-  "sha256": "7b1cc44606ae265f73ec6cbf2f74f2e5dd9e0206524897b04f549dc3ad4c475d",
+  "sha256": "969342cb667f11099f798b8cff929c301d3739b46d9e8037a0010e2c5eeeae1f",
   "publishedAt": "2026-11-04",
   "notes": [
-    "扫码点名防重复：同一名学生本次只记一次，重复扫自动跳过并提示",
-    "二次筛选：扫码只攒草稿不落库，点完成回传课堂点名复核，确认后保存考勤才一次性写入",
-    "改号方式二：考勤端新增「设置学号」，可更新名单或生成授权码，学生端扫一次即可改号",
-    "网页端补齐改号审批（申请码→扫同意码 / 扫授权码），摄像头扫码用本地 jsQR 离线解码"
+    "扫码点名课程记忆：进入扫码页自动按「星期几+节次」匹配上一周同一时段的课程并选中（限定已选班级，不改走班级，手动选课程后不再覆盖）",
+    "版本一致性校验：发布时强制校验学生端与考勤端版本号一致、两端 APK 都已构建，任一端缺失或版本不一致即阻止发布"
   ],
   "mandatory": false
 }

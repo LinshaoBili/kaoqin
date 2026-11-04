@@ -1,13 +1,14 @@
 {
-  "versionCode": 31,
-  "versionName": "0.0.31",
-  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.0.31-release.apk",
-  "sizeBytes": 4523888,
-  "sha256": "6eefcf43c66551961b2af0455f145c460c15d335939a7c891608a9b21966c851",
+  "versionCode": 32,
+  "versionName": "0.0.32",
+  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.0.32-release.apk",
+  "sizeBytes": 4544360,
+  "sha256": "1c27941b0503362f3362baaa32a825f50859c9743ff461c2ac33bc7b9ad36d39",
   "publishedAt": "2026-11-04",
   "notes": [
-    "更新源新增「重置默认」按钮，误清空后可一键恢复内置地址",
-    "清空更新源后点保存会自动恢复默认，不再丢失链接"
+    "新增新手引导：六步依次设置学期、周次、班级学生、上课时间、课程地点、复制格式",
+    "每步都能一键跳到对应设置页，也可以直接跳过",
+    "仅在第一次打开应用时出现，已有数据的老用户不会被引导打扰"
   ],
   "mandatory": false
 }

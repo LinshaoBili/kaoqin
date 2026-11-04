@@ -1,12 +1,14 @@
 {
-  "versionCode": 48,
-  "versionName": "0.3.2",
-  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.3.2-release.apk",
-  "sizeBytes": 4934044,
-  "sha256": "6dbfba43c585a756ed655cc8ad95d07f2f02479d06bd045887b4ecc35c319181",
+  "versionCode": 49,
+  "versionName": "0.3.3",
+  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.3.3-release.apk",
+  "sizeBytes": 5014960,
+  "sha256": "952dad3fd4e2d80c21fe2daa7f568d3b6873141eddc533fd84124e2413433d2d",
   "publishedAt": "2026-11-04",
   "notes": [
-    "移除「设置学号」功能（入口、页面、路由、KQ4 授权码已全部清理），学号变更统一由「改号审批」承担（学生申请码 KQ2 → 老师同意码 KQ3），避免功能重复与混淆"
+    "新增碰一碰同步：两台手机贴一起即可通过 NFC 同步班级、学生、考勤记录、课程、地点（发送方 HCE 模拟卡，接收方读卡器读取，数据 GZIP 压缩分块 + SHA-256 校验）",
+    "接收方收齐后进入课程/地点连线匹配：同名自动匹配，不同名可连线到已有 / 新增 / 无视，映射确认后再落库",
+    "导出功能改为默认直接保存到应用目录（自动命名，不再弹系统文件选择器），保存后自动弹出分享"
   ],
   "mandatory": false
 }

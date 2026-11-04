@@ -31,11 +31,6 @@
   // 明文形态只用于「当前环境没有 WebCrypto」（例如 file:// 打开），带前缀便于识别
   var PLAIN_PREFIX = 'P1.';
 
-  var COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
-  var COOLDOWN_DAYS = 7;
-  var HOUR = 60 * 60 * 1000;
-  var MINUTE = 60 * 1000;
-
   var subtle = (global.crypto && global.crypto.subtle) ? global.crypto.subtle : null;
 
   // ---------------------------------------------------------------- base64
@@ -80,7 +75,7 @@
   }
 
   function sealRecord(rec) {
-    var body = JSON.stringify({ no: rec.no, at: rec.at, seen: rec.seen });
+    var body = JSON.stringify({ no: rec.no });
 
     if (!subtle) {
       return Promise.resolve(PLAIN_PREFIX + b64encode(new TextEncoder().encode(body)));
@@ -143,11 +138,7 @@
 
   function normalize(o) {
     if (!o || typeof o.no !== 'string' || !o.no) return null;
-    return {
-      no: o.no,
-      at: Number(o.at) || 0,
-      seen: Number(o.seen) || 0
-    };
+    return { no: o.no };
   }
 
   // ---------------------------------------------------------------- 存储
@@ -174,8 +165,7 @@
   }
 
   function save(no) {
-    var now = Date.now();
-    return saveRecord({ no: no, at: now, seen: now });
+    return saveRecord({ no: no });
   }
 
   /**
@@ -185,69 +175,25 @@
    * 否则"恢复一次"就能把冷静期刷新，等于给了个绕过口子。
    */
   function saveRecord(rec) {
-    var clean = { no: rec.no, at: Number(rec.at) || 0, seen: Number(rec.seen) || 0 };
+    var clean = { no: rec.no };
     return sealRecord(clean).then(function (token) {
       var ok = writeRaw(token);
       return { ok: ok, record: clean, token: token };
     });
   }
 
-  /** 只推进 seen（抵御把手机时间往回拨），写入频率由调用方控制 */
-  function touch(rec, now) {
-    var seen = nextSeen(rec.seen, now);
-    if (seen - rec.seen < HOUR) return Promise.resolve(rec);
-    var updated = { no: rec.no, at: rec.at, seen: seen };
-    return sealRecord(updated).then(function (token) {
-      writeRaw(token);
-      return updated;
-    });
-  }
-
-  function clear() {
+    function clear() {
     try { global.localStorage.removeItem(STORE_KEY); } catch (e) { /* 无痕模式 */ }
   }
 
-  // ---------------------------------------------------------------- 冷静期（与 BindRules 同构）
-
-  function effectiveNow(now, lastSeen) {
-    return now > lastSeen ? now : lastSeen;
-  }
-
-  function remainingMs(rec, now) {
-    if (!rec || !rec.at) return 0;
-    var deadline = rec.at + COOLDOWN_MS;
-    var at = effectiveNow(now, rec.seen);
-    return at >= deadline ? 0 : deadline - at;
-  }
-
-  function nextSeen(lastSeen, now) {
-    return now > lastSeen ? now : lastSeen;
-  }
-
-  function describeRemaining(ms) {
-    if (ms <= 0) return '';
-    var days = Math.floor(ms / (24 * HOUR));
-    var hours = Math.floor((ms % (24 * HOUR)) / HOUR);
-    var minutes = Math.floor((ms % HOUR) / MINUTE);
-    if (days > 0) return hours > 0 ? days + ' 天 ' + hours + ' 小时' : days + ' 天';
-    if (hours > 0) return minutes > 0 ? hours + ' 小时 ' + minutes + ' 分钟' : hours + ' 小时';
-    if (minutes > 0) return minutes + ' 分钟';
-    return '不到 1 分钟';
-  }
 
   global.BindStore = {
-    COOLDOWN_DAYS: COOLDOWN_DAYS,
-    COOLDOWN_MS: COOLDOWN_MS,
     supported: !!subtle,
     load: load,
     save: save,
     saveRecord: saveRecord,
-    touch: touch,
     clear: clear,
     seal: sealRecord,
-    open: openToken,
-    remainingMs: remainingMs,
-    nextSeen: nextSeen,
-    describeRemaining: describeRemaining
+    open: openToken
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

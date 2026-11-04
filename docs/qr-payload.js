@@ -69,4 +69,105 @@
     encode: encode,
     parse: parse
   };
+
+  // ---------------------------------------------------------------- 改号（ChangeFlow）
+
+  var REQUEST_PREFIX = 'KQ2';
+  var APPROVAL_PREFIX = 'KQ3';
+  var AUTHORIZE_PREFIX = 'KQ4';
+
+  /** FNV-1a 32 位取高 16 位（与 ScanCode.checksum 同算法，作用于任意拼接串） */
+  function fnv16(text) {
+    var h = FNV_OFFSET;
+    for (var i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, FNV_PRIME);
+    }
+    return (h >>> 16 & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+  }
+
+  function generateToken() {
+    if (global.crypto && global.crypto.getRandomValues) {
+      var b = new Uint8Array(8);
+      global.crypto.getRandomValues(b);
+      var s = '';
+      for (var i = 0; i < b.length; i++) s += (b[i] < 16 ? '0' : '') + b[i].toString(16).toUpperCase();
+      return s;
+    }
+    var r = '';
+    for (var j = 0; j < 16; j++) r += '0123456789ABCDEF'[Math.floor(Math.random() * 16)];
+    return r;
+  }
+
+  function request(oldNo, token) {
+    var no = normalize(oldNo);
+    if (!no || no.length > MAX_NO_LENGTH || !token) return '';
+    return REQUEST_PREFIX + '|' + no + '|' + token + '|' + fnv16(no + '|' + token);
+  }
+
+  function approval(oldNo, newNo, token) {
+    var o = normalize(oldNo);
+    var n = normalize(newNo);
+    if (!o || !n || o.length > MAX_NO_LENGTH || n.length > MAX_NO_LENGTH || !token) return '';
+    return APPROVAL_PREFIX + '|' + o + '|' + n + '|' + token + '|' + fnv16(o + '|' + n + '|' + token);
+  }
+
+  function authorize(newNo, token) {
+    var n = normalize(newNo);
+    if (!n || n.length > MAX_NO_LENGTH || !token) return '';
+    return AUTHORIZE_PREFIX + '|' + n + '|' + token + '|' + fnv16(n + '|' + token);
+  }
+
+  function parseRequest(raw) {
+    var text = String(raw == null ? '' : raw).trim();
+    if (!text) return { ok: false, reason: 'notOurs' };
+    var parts = text.split('|');
+    if (parts.length !== 4) return { ok: false, reason: 'notOurs' };
+    if (parts[0].toUpperCase() !== REQUEST_PREFIX) return { ok: false, reason: 'notOurs' };
+    var no = normalize(parts[1]);
+    var token = String(parts[2] || '').trim();
+    if (!no || no.length > MAX_NO_LENGTH || !token) return { ok: false, reason: 'emptyNo' };
+    if (String(parts[3] || '').trim().toUpperCase() !== fnv16(no + '|' + token)) return { ok: false, reason: 'badChecksum' };
+    return { ok: true, oldNo: no, token: token };
+  }
+
+  function parseApproval(raw) {
+    var text = String(raw == null ? '' : raw).trim();
+    if (!text) return { ok: false, reason: 'notOurs' };
+    var parts = text.split('|');
+    if (parts.length !== 5) return { ok: false, reason: 'notOurs' };
+    if (parts[0].toUpperCase() !== APPROVAL_PREFIX) return { ok: false, reason: 'notOurs' };
+    var o = normalize(parts[1]);
+    var n = normalize(parts[2]);
+    var token = String(parts[3] || '').trim();
+    if (!o || !n || o.length > MAX_NO_LENGTH || n.length > MAX_NO_LENGTH || !token) return { ok: false, reason: 'emptyNo' };
+    if (String(parts[4] || '').trim().toUpperCase() !== fnv16(o + '|' + n + '|' + token)) return { ok: false, reason: 'badChecksum' };
+    return { ok: true, oldNo: o, newNo: n, token: token };
+  }
+
+  function parseAuthorize(raw) {
+    var text = String(raw == null ? '' : raw).trim();
+    if (!text) return { ok: false, reason: 'notOurs' };
+    var parts = text.split('|');
+    if (parts.length !== 4) return { ok: false, reason: 'notOurs' };
+    if (parts[0].toUpperCase() !== AUTHORIZE_PREFIX) return { ok: false, reason: 'notOurs' };
+    var n = normalize(parts[1]);
+    var token = String(parts[2] || '').trim();
+    if (!n || n.length > MAX_NO_LENGTH || !token) return { ok: false, reason: 'emptyNo' };
+    if (String(parts[3] || '').trim().toUpperCase() !== fnv16(n + '|' + token)) return { ok: false, reason: 'badChecksum' };
+    return { ok: true, newNo: n, token: token };
+  }
+
+  global.ChangeFlow = {
+    REQUEST_PREFIX: REQUEST_PREFIX,
+    APPROVAL_PREFIX: APPROVAL_PREFIX,
+    AUTHORIZE_PREFIX: AUTHORIZE_PREFIX,
+    generateToken: generateToken,
+    request: request,
+    approval: approval,
+    authorize: authorize,
+    parseRequest: parseRequest,
+    parseApproval: parseApproval,
+    parseAuthorize: parseAuthorize
+  };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

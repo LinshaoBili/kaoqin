@@ -5,12 +5,13 @@
  * 1. **不联网也能用**。所有资源（含二维码库）都在本目录，Service Worker 预缓存整个外壳；
  *    首次打开之后断网仍然能显示二维码——这是学生"手机欠费/没流量"时的真实场景。
  * 2. **二维码永远白底黑码**，即使系统是深色模式。反色二维码在不少扫码器上解不出来。
- * 3. 不依赖任何框架/构建步骤，改完直接推到 GitHub Pages 就生效。
+ * 3. **学号绑定有冷静期**（7 天），规则与安卓端 `BindRules` 完全同构；
+ *    记录用 AES-GCM 加密后存 localStorage，并可导出成"恢复码"换设备使用。
+ * 4. 不依赖任何框架/构建步骤，改完直接推到 GitHub Pages 就生效。
  */
 (function () {
   'use strict';
 
-  var KEY_NO = 'kaoqin.student.no';
   var el = function (id) { return document.getElementById(id); };
 
   var bindView = el('bindView');
@@ -21,6 +22,7 @@
   var netChip = el('netChip');
   var installBtn = el('installBtn');
   var installBtn2 = el('installBtn2');
+  var lockNote = el('lockNote');
   var mask = el('mask');
   var sheetTitle = el('sheetTitle');
   var sheetBody = el('sheetBody');
@@ -28,14 +30,30 @@
   var deferredPrompt = null;
   var swReady = false;
 
-  // ---------------------------------------------------------------- 存储
+  /** 当前绑定状态的镜像（true 的那一刻以 BindStore 为准，这里只是为了少写异步） */
+  var state = { record: null, token: '', encrypted: true };
 
-  function readNo() {
-    try { return localStorage.getItem(KEY_NO) || ''; } catch (e) { return ''; }
+  // ---------------------------------------------------------------- 冷静期
+
+  function lockInfo() {
+    if (!state.record) return { locked: false, text: '' };
+    var ms = BindStore.remainingMs(state.record, Date.now());
+    return { locked: ms > 0, text: BindStore.describeRemaining(ms) };
   }
 
-  function writeNo(no) {
-    try { localStorage.setItem(KEY_NO, no); } catch (e) { /* 无痕模式写不进去，本次仍可用 */ }
+  /** 锁定状态要"看得见"：按钮置灰 + 明确写出还剩多久，否则学生会以为按钮坏了 */
+  function refreshLock() {
+    var info = lockInfo();
+    var btn = el('changeBtn');
+    if (info.locked) {
+      lockNote.textContent = '学号已锁定，' + info.text + ' 后可更换（防止用别人的学号代签）';
+      lockNote.classList.remove('hide');
+      btn.disabled = true;
+    } else {
+      lockNote.textContent = '';
+      lockNote.classList.add('hide');
+      btn.disabled = false;
+    }
   }
 
   // ---------------------------------------------------------------- 二维码
@@ -97,15 +115,16 @@
     bindView.classList.add('hide');
     qrView.classList.remove('hide');
     installBtn.classList.add('hide');
+    refreshLock();
     setChip();
   }
 
-  function showBind() {
-    input.value = readNo();
+  function showBind(notice) {
+    input.value = state.record ? state.record.no : '';
     qrView.classList.add('hide');
     bindView.classList.remove('hide');
     installBtn.classList.remove('hide');
-    errBox.textContent = '';
+    errBox.textContent = notice || '';
     setChip();
   }
 
@@ -134,9 +153,13 @@
     }
   }
 
-  // ---------------------------------------------------------------- 绑定
+  // ---------------------------------------------------------------- 绑定 / 更换
 
   el('bindBtn').addEventListener('click', function () {
+    if (lockInfo().locked) {
+      errBox.textContent = '学号已锁定，暂时不能更改';
+      return;
+    }
     var no = ScanCode.normalize(input.value);
     if (!no) { errBox.textContent = '请输入学号'; return; }
     if (no.length > ScanCode.MAX_NO_LENGTH) {
@@ -144,15 +167,92 @@
       return;
     }
     errBox.textContent = '';
-    writeNo(no);
-    showQr(no);
+    BindStore.save(no).then(function (res) {
+      state.record = res.record;
+      state.token = res.token;
+      state.encrypted = res.token.indexOf('P1.') !== 0 && BindStore.supported;
+      if (!res.ok) {
+        // 隐私模式下写不进去：本次仍可用，但要说明"关掉页面就没了"
+        errBox.textContent = '';
+      }
+      showQr(no);
+    });
   });
 
   input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { el('bindBtn').click(); }
   });
 
-  el('changeBtn').addEventListener('click', showBind);
+  el('changeBtn').addEventListener('click', function () {
+    if (lockInfo().locked) return;
+    showBind('');
+  });
+
+  // ---------------------------------------------------------------- 备份 / 恢复（加密恢复码）
+
+  function openTokenSheet() {
+    openSheet('备份 / 恢复学号', [
+      '<p>下面这串是<b>加密后</b>的绑定记录，可以直接抄到备忘录里。',
+      '换手机、换浏览器、或不小心清了网站数据时，用第二种方式粘回来即可。</p>',
+      '<textarea id="tokenBox" rows="4" spellcheck="false" autocapitalize="off" placeholder="在这里粘贴恢复码"></textarea>',
+      '<button class="primary" id="tokenCopy">复制本机绑定码</button>',
+      '<button class="ghost" id="tokenApply">用上面的内容恢复</button>',
+      '<div class="err" id="tokenErr"></div>'
+    ].join(''));
+    if (!state.encrypted) {
+      el('tokenErr').textContent = '注意：当前环境不支持加密存储，这条记录是未加密的';
+    }
+
+    var box = el('tokenBox');
+    box.value = state.token || '';
+
+    el('tokenCopy').addEventListener('click', function () {
+      var text = state.token || '';
+      if (!text) { el('tokenErr').textContent = '还没有绑定记录，无法导出'; return; }
+      copyText(text, box).then(function (ok) {
+        el('tokenErr').textContent = ok ? '已复制，粘贴到备忘录保存即可' : '复制失败，请长按上面的文本框手动复制';
+      });
+    });
+
+    el('tokenApply').addEventListener('click', function () {
+      var text = (box.value || '').trim();
+      if (!text) { el('tokenErr').textContent = '请先粘贴恢复码'; return; }
+      BindStore.open(text).then(function (rec) {
+        if (!rec) {
+          el('tokenErr').textContent = '恢复码无效或已被修改，无法恢复';
+          return;
+        }
+        BindStore.saveRecord(rec).then(function (res) {
+          state.record = rec;
+          state.token = res.token;
+          state.encrypted = res.token.indexOf('P1.') !== 0 && BindStore.supported;
+          mask.classList.remove('show');
+          showQr(rec.no);
+        });
+      });
+    });
+  }
+
+  function copyText(text, fallbackEl) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text)
+        .then(function () { return true; })
+        .catch(function () { return legacyCopy(fallbackEl); });
+    }
+    return Promise.resolve(legacyCopy(fallbackEl));
+  }
+
+  function legacyCopy(node) {
+    try {
+      node.focus();
+      node.select();
+      return document.execCommand('copy');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  el('tokenBtn').addEventListener('click', openTokenSheet);
 
   // ---------------------------------------------------------------- 添加到桌面
 
@@ -243,7 +343,34 @@
 
   // ---------------------------------------------------------------- 启动
 
-  var saved = readNo();
-  if (saved) { showQr(saved); } else { showBind(); }
-  setChip();
+  // 定时刷新锁定倒计时：不需要秒级，一分钟一次足够
+  window.setInterval(function () {
+    if (state.record) refreshLock();
+  }, 60000);
+
+  // 极少数情况下脚本可能没加载完整（例如 Service Worker 正处在换版的中途），
+  // 那样 BindStore 就是 undefined——给一句能照做的话，而不是让整页白屏。
+  if (!window.BindStore) {
+    errBox.textContent = '页面脚本没有加载完整，请下拉刷新一次';
+    showBind('');
+    return;
+  }
+
+  BindStore.load().then(function (loaded) {
+    state.record = loaded.record;
+    state.token = loaded.token;
+    state.encrypted = loaded.encrypted;
+
+    if (loaded.record) {
+      showQr(loaded.record.no);
+      // 推进 seen：这是"把手机时间往回拨"绕不过冷静期的原因（与安卓端同一套规则）
+      BindStore.touch(loaded.record, Date.now()).then(function (rec) { state.record = rec; });
+    } else {
+      showBind(loaded.damaged ? '上次的绑定记录已损坏（或被修改过），需要重新填写学号' : '');
+    }
+    setChip();
+  }).catch(function () {
+    // 存储整体不可用（极端隐私模式）：仍然允许本次出码，只是刷新后要重新填
+    showBind('');
+  });
 })();

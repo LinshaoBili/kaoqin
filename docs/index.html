@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>考勤码</title>
+<meta name="description" content="显示本人考勤二维码，供老师在课堂扫码点名。">
+<meta name="theme-color" content="#1E6FD9">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<!-- 这三个 meta 让 iOS「添加到主屏幕」后以全屏应用方式打开，而不是再套一层 Safari -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="考勤码">
+<style>
+  :root {
+    --blue: #1E6FD9;
+    --blue-dark: #1a5fb8;
+    --ink: #14202e;
+    --muted: #5d6b7a;
+    --line: #e2e8f0;
+    --bg: #f5f7fb;
+    --card: #ffffff;
+    --danger: #c62828;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", Roboto, sans-serif;
+    min-height: 100vh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .wrap { max-width: 520px; margin: 0 auto; padding: 18px 18px 28px; }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  header h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  .chip {
+    margin-left: auto; font-size: 11px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--muted); background: #fff; white-space: nowrap;
+  }
+  .chip.ok { color: #1b7f3b; border-color: #cfe8d7; background: #f2fbf5; }
+  .sub { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 2px 0 16px; }
+
+  .card {
+    background: var(--card); border-radius: 16px; padding: 18px;
+    box-shadow: 0 1px 2px rgba(16,32,48,.05), 0 8px 24px rgba(16,32,48,.06);
+  }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  input[type="text"] {
+    width: 100%; padding: 13px 14px; font-size: 17px; border-radius: 12px;
+    border: 1.5px solid var(--line); background: #fff; color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .5px;
+  }
+  input[type="text"]:focus { outline: none; border-color: var(--blue); }
+  button {
+    font-family: inherit; font-size: 16px; font-weight: 600; border-radius: 12px;
+    border: 0; padding: 14px 16px; width: 100%; cursor: pointer;
+  }
+  button.primary { background: var(--blue); color: #fff; }
+  button.primary:active { background: var(--blue-dark); }
+  button.ghost {
+    background: #fff; color: var(--blue); border: 1.5px solid #d6e3f7; margin-top: 10px;
+  }
+  button:disabled { opacity: .55; }
+  .err { color: var(--danger); font-size: 12.5px; margin-top: 8px; min-height: 16px; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.65; margin-top: 14px; }
+
+  /* ---------- 二维码视图 ---------- */
+  .qr-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 14px; }
+  .qr-head .no { font-size: 15px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+  .qr-head .grow { flex: 1; }
+  .qr-head button {
+    width: auto; padding: 6px 12px; font-size: 13px; font-weight: 500;
+    background: #fff; color: var(--blue); border: 1px solid #d6e3f7; border-radius: 9px;
+  }
+  .qr-box {
+    background: #fff; border-radius: 16px; padding: 12px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line);
+  }
+  #qr {
+    display: block; width: 100%; max-width: 360px; height: auto;
+    image-rendering: pixelated; border-radius: 6px;
+  }
+  .tips { text-align: center; color: var(--muted); font-size: 12.5px; line-height: 1.7; margin-top: 14px; }
+  .tips b { color: var(--ink); }
+
+  /* ---------- 安装说明弹层 ---------- */
+  .mask {
+    position: fixed; inset: 0; background: rgba(12,22,34,.45);
+    display: none; align-items: flex-end; justify-content: center; z-index: 20;
+  }
+  .mask.show { display: flex; }
+  .sheet {
+    background: #fff; width: 100%; max-width: 520px; border-radius: 18px 18px 0 0;
+    padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+    animation: up .18s ease-out;
+  }
+  @keyframes up { from { transform: translateY(14px); opacity: .6 } to { transform: none; opacity: 1 } }
+  .sheet h2 { font-size: 16px; margin: 0 0 10px; }
+  .sheet ol { margin: 0 0 14px; padding-left: 20px; color: var(--ink); font-size: 14px; line-height: 1.9; }
+  .sheet p { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .sheet .row { display: flex; gap: 10px; }
+  .sheet .row button { flex: 1; }
+  .hide { display: none !important; }
+
+  /* ---------- 夜间模式 ----------
+     只换界面配色，二维码卡片（.qr-box 与 canvas）始终保持白底黑码：
+     反色二维码在不少扫码器上直接解不出来，好看不能拿可用性换。 */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --blue: #4d94ee;
+      --blue-dark: #3d82d8;
+      --ink: #e6edf6;
+      --muted: #94a3b4;
+      --line: #26313d;
+      --bg: #0f151c;
+      --card: #161e27;
+      --danger: #ff7a72;
+    }
+    body { background: var(--bg); }
+    .card { box-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35); }
+    input[type="text"] { background: #111821; color: var(--ink); }
+    button.ghost { background: var(--card); color: var(--blue); border-color: #2a3a4c; }
+    .qr-head button { background: var(--card); border-color: #2a3a4c; }
+    .chip { background: var(--card); }
+    .chip.ok { background: #12251a; color: #7fd39a; border-color: #1e3a29; }
+    .sheet { background: #161e27; }
+    .mask { background: rgba(0, 0, 0, .65); }
+    .qr-box { background: #fff; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>考勤码</h1>
+    <span class="chip" id="netChip">检查中…</span>
+  </header>
+
+  <!-- 绑定学号 -->
+  <section id="bindView">
+    <p class="sub">
+      填写本人在班级名单里的学号，页面会生成一张专属二维码。<br>
+      老师用扫码点名时扫它，就能把你记成「已到 / 迟到」。
+    </p>
+    <div class="card">
+      <label for="noInput">学号</label>
+      <input id="noInput" type="text" inputmode="text" autocomplete="off"
+             autocapitalize="characters" spellcheck="false" placeholder="例如 20230001">
+      <div class="err" id="bindErr"></div>
+      <button class="primary" id="bindBtn">生成考勤码</button>
+      <p class="hint">
+        学号只保存在这台手机的浏览器里，不上传任何服务器。<br>
+        填错可以随时在右上角「更换」重新填写。
+      </p>
+    </div>
+  </section>
+
+  <!-- 显示二维码 -->
+  <section id="qrView" class="hide">
+    <div class="qr-head">
+      <span class="qr-head grow"><b id="whoNo">—</b></span>
+      <span class="no" id="noEcho"></span>
+      <button id="changeBtn">更换</button>
+    </div>
+    <div class="qr-box">
+      <canvas id="qr" width="360" height="360"></canvas>
+    </div>
+    <p class="tips">
+      把屏幕对准老师的扫码框即可<br>
+      <b>屏幕别自动锁屏</b>（页面已尽量保持常亮）
+    </p>
+    <button class="ghost" id="installBtn2">添加到桌面，像 App 一样用</button>
+  </section>
+
+  <button class="ghost" id="installBtn">添加到桌面</button>
+  <p class="hint" id="offlineNote">
+    添加到桌面后可以离线打开：第一次打开后页面会存到本机，断网也能显示二维码。
+  </p>
+</div>
+
+<div class="mask" id="mask">
+  <div class="sheet">
+    <h2 id="sheetTitle">添加到桌面</h2>
+    <div id="sheetBody"></div>
+    <div class="row">
+      <button class="ghost" id="sheetClose" style="margin-top:0">知道了</button>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/qrcode.js"></script>
+<script src="qr-payload.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -545,7 +545,31 @@
     return { db: out, added: added, updated: updated };
   }
 
+  // ============================================================ 分享策略（导出文件时走分享面板还是直接下载）
+  /**
+   * 是否手机/平板。iPadOS 13+ 的 UA 伪装成 Macintosh，靠触点数量区分（桌面 Mac 触点恒为 0~1）。
+   */
+  function isMobileUA(ua, maxTouchPoints) {
+    ua = String(ua || '');
+    if (/Android|iPhone|iPod|iPad|Windows Phone|HarmonyOS|HarmonyOSNext|Mobile/i.test(ua)) return true;
+    if (/Macintosh/i.test(ua) && (maxTouchPoints || 0) > 1) return true;   // iPad 桌面模式
+    return false;
+  }
+
+  /**
+   * 'share' = 走 navigator.share 系统分享面板；'download' = 直接存成文件。
+   *
+   * 电脑一律 'download'：桌面 Chrome/Edge 也有 canShare，但弹出的是系统共享弹窗，
+   * 与「导出到本机」的预期不符（Windows 上还可能因为没有可分享的应用而直接失败）。
+   */
+  function sharePolicy(ua, maxTouchPoints, canShare) {
+    if (!canShare) return 'download';
+    return isMobileUA(ua, maxTouchPoints) ? 'share' : 'download';
+  }
+
   return {
+    // 分享策略
+    isMobileUA: isMobileUA, sharePolicy: sharePolicy,
     // 状态
     STATUSES: STATUSES, LEAVE: LEAVE, MAIN: MAIN, PRI: PRI, EMPTY: EMPTY,
     COLUMNS: COLUMNS, SCORE_COLUMNS: SCORE_COLUMNS,

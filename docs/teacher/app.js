@@ -579,7 +579,7 @@
       '<div class="card"><h2>数据</h2>' +
       '<button class="btn ghost" data-act="backup">备份数据（导出 JSON）</button>' +
       '<div style="height:8px"></div>' +
-      '<button class="btn ghost" data-act="restore">从备份恢复（导入 JSON）</button>' +
+      '<button class="btn ghost" data-act="restore">从备份恢复（本应用 / Android 导出）</button>' +
       '<div style="height:8px"></div>' +
       '<button class="btn ghost" style="color:var(--danger);border-color:#f0cccc" data-act="clearAll">清空全部数据</button>' +
       '<p class="tiny muted" style="margin:10px 0 0">数据只保存在这台设备的浏览器里，换设备/清缓存前请先备份。</p>' +
@@ -877,15 +877,56 @@
       reader.onload = function () {
         try {
           var d = JSON.parse(reader.result);
-          if (!d || d.v !== 1 || !Array.isArray(d.classes)) { toast('不是有效的备份文件'); return; }
-          confirmSheet('恢复备份', '将用备份覆盖本机现有数据（班级 ' + (d.classes || []).length + ' 个，考勤 ' + (d.sessions || []).length + ' 次）。确定？', function () {
-            DB = d; save(); toast('已恢复'); render();
-          });
+          var next = null, fromAndroid = false;
+          if (d && d.v === 1 && Array.isArray(d.classes)) next = d;
+          else if (d && d.tables && (d.tables.class_info || d.tables.student)) { next = importAndroid(d); fromAndroid = true; }
+          if (!next) { toast('不是有效的备份文件（本应用或 Android 导出均可）'); return; }
+          confirmSheet('恢复备份',
+            (fromAndroid ? '识别为 Android 端导出文件。' : '') +
+            '将用备份覆盖本机现有数据（班级 ' + next.classes.length + ' 个，考勤 ' + next.sessions.length + ' 次）。确定？',
+            function () { DB = next; save(); toast(fromAndroid ? '已从 Android 备份导入' : '已恢复'); render(); });
         } catch (e) { toast('文件解析失败：' + e.message); }
       };
       reader.readAsText(f);
     };
     input.click();
+  }
+
+  /** 把 Android 端导出的 BackupEnvelope（tables: {表名:{fields,rows}}）映射成本地数据 */
+  function importAndroid(d) {
+    function rows(name) {
+      var tab = d.tables[name];
+      if (!tab || !tab.fields || !tab.rows) return [];
+      var idx = {};
+      tab.fields.forEach(function (f, i) { idx[f] = i; });
+      return tab.rows.map(function (r) {
+        var o = {};
+        Object.keys(idx).forEach(function (f) { o[f] = r[idx[f]]; });
+        return o;
+      });
+    }
+    var db = blank();
+    db.classes = rows('class_info').map(function (o) {
+      return { id: +o.id, name: o.name || '', major: o.major || '', majorShort: o.majorShort || '', academicYear: o.academicYear || '', counselor: o.counselor || '' };
+    });
+    db.students = rows('student').map(function (o) {
+      return { id: +o.id, classId: +o.classId, studentNo: o.studentNo || '', name: o.name || '', sortOrder: +o.sortOrder || 0 };
+    });
+    db.courses = rows('course').map(function (o) { return { id: +o.id, name: o.name || '', teacher: o.teacher || '' }; });
+    db.locations = rows('location').map(function (o) { return { id: +o.id, name: o.name || '', department: o.department || '' }; });
+    db.times = rows('class_time').map(function (o) { return { id: +o.id, period: o.period || '', startTime: o.startTime || '', endTime: o.endTime || '' }; });
+    db.sessions = rows('session').map(function (o) {
+      return { id: +o.id, classId: +o.classId, courseId: +o.courseId, locationId: +o.locationId || 0, timeId: +o.timeId || 0, date: o.date || '', remark: o.remark || '', createdAt: +o.createdAt || 0, className: o.className || '', courseName: o.courseName || '', locationName: o.locationName || '', timePeriod: o.timePeriod || '' };
+    });
+    db.records = rows('record').map(function (o) {
+      return { id: +o.id, sessionId: +o.sessionId, studentId: +o.studentId, status: o.status || 'PRESENT', remark: o.remark || '', studentName: o.studentName || '', studentNo: o.studentNo || '', half: +o.half || 1, checkInTime: o.checkInTime || '', leaveTime: o.leaveTime || '' };
+    });
+    var maxId = 0;
+    ['classes', 'students', 'courses', 'locations', 'times', 'sessions', 'records'].forEach(function (k) {
+      db[k].forEach(function (x) { if (x.id > maxId) maxId = x.id; });
+    });
+    db.seq = maxId;
+    return db;
   }
 
   var installEvent = null;

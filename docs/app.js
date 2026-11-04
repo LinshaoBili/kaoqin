@@ -194,15 +194,13 @@
   function renderChangeMenu() {
     changeTitle.textContent = '更改学号';
     changeBody.innerHTML = [
-      '<p class="sub" style="text-align:center">方式一：把申请码给老师扫，老师同意后再扫同意码。</p>',
+      '<p class="sub" style="text-align:center">把申请码给老师扫，老师同意后再扫同意码。</p>',
       '<div class="change-qr" id="reqQr"></div>',
       '<button class="primary" id="scanApprovalBtn">扫老师的同意码</button>',
-      '<button class="ghost" id="scanAuthorizeBtn">扫老师的授权码（一步改号）</button>',
       '<div class="change-err" id="changeErr"></div>'
     ].join('');
     renderChangeQr(ChangeFlow.request(state.record.no, changeToken), el('reqQr'));
     el('scanApprovalBtn').addEventListener('click', function () { startScan('approval'); });
-    el('scanAuthorizeBtn').addEventListener('click', function () { startScan('authorize'); });
   }
 
   function renderChangeQr(text, host) {
@@ -218,7 +216,7 @@
 
   function startScan(mode) {
     changeMode = mode;
-    changeTitle.textContent = mode === 'approval' ? '扫描老师的同意码' : '扫描老师的授权码';
+    changeTitle.textContent = '扫描老师的同意码';
     changeBody.innerHTML = [
       '<div class="scan-box"><video id="scanVideo" playsinline muted></video><canvas id="scanCanvas"></canvas></div>',
       '<div class="change-err" id="changeErr"></div>',
@@ -275,24 +273,17 @@
 
   function onDecode(raw) {
     stopScan();
-    if (changeMode === 'approval') {
-      var p = ChangeFlow.parseApproval(raw);
-      if (!p.ok) { failScan(changeReason(p, 'approval')); return; }
-      if (p.oldNo !== state.record.no) { failScan('这个同意码不是给你的（学号不匹配）'); return; }
-      if (p.token !== changeToken) { failScan('这个同意码不是给这次申请的'); return; }
-      applyNewNo(p.newNo);
-    } else {
-      var a = ChangeFlow.parseAuthorize(raw);
-      if (!a.ok) { failScan(changeReason(a, 'authorize')); return; }
-      applyNewNo(a.newNo);
-    }
+    var p = ChangeFlow.parseApproval(raw);
+    if (!p.ok) { failScan(changeReason(p)); return; }
+    if (p.oldNo !== state.record.no) { failScan('这个同意码不是给你的（学号不匹配）'); return; }
+    if (p.token !== changeToken) { failScan('这个同意码不是给这次申请的'); return; }
+    applyNewNo(p.newNo);
   }
 
-  function changeReason(p, mode) {
-    var kind = mode === 'approval' ? '同意码' : '授权码';
-    if (p.reason === 'badChecksum') return kind + '校验不通过（可能截图不全或抄错）';
-    if (p.reason === 'emptyNo') return kind + '里没有有效学号';
-    return '不是改号' + kind;
+  function changeReason(p) {
+    if (p.reason === 'badChecksum') return '同意码校验不通过（可能截图不全或抄错）';
+    if (p.reason === 'emptyNo') return '同意码里没有有效学号';
+    return '不是改号同意码';
   }
 
   function failScan(msg) {

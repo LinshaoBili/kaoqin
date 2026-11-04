@@ -13,13 +13,14 @@
  *
  * 换版本时改下面的 CACHE 常量（发布脚本会自动写成本次版本号）。
  */
-const CACHE = 'kaoqin-v0.1.0';
+const CACHE = 'kaoqin-v0.1.2';
 
 const ASSETS = [
   './',
   './index.html',
   './app.js',
   './qr-payload.js',
+  './bind-store.js',
   './vendor/qrcode.js',
   './manifest.webmanifest',
   './icons/icon-192.png',

@@ -1,14 +1,12 @@
 {
-  "versionCode": 41,
-  "versionName": "0.2.0",
+  "versionCode": 42,
+  "versionName": "0.2.1",
   "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQinStudent-release.apk",
-  "sizeBytes": 2123533,
-  "sha256": "866ec931720638424fb83c724fe9101b66112e85a822fc5e4322930826f65326",
+  "sizeBytes": 2122977,
+  "sha256": "b35b3a7db31ea122dc16baec20db24311126e9b5ee9d017cc37c9d036e5e030d",
   "publishedAt": "2026-11-04",
   "notes": [
-    "修复：扫码页相机预览旋转方向（去掉矩阵里错误的垂直翻转并纠正旋转方向，画面不再转 90°）",
-    "新增：学生端更改学号需老师审批（学生出申请码 → 老师扫码同意并给同意码 → 学生扫同意码生效，同意码只有申请者能用）",
-    "移除：绑定后 7 天冷静期（改由老师审批代替）"
+    "修复：扫码页相机预览旋转方向（矩阵旋转角固定为 0，真机实测 +90 / -90 均不正确）"
   ],
   "mandatory": false
 }

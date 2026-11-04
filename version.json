@@ -1,12 +1,15 @@
 {
-  "versionCode": 42,
-  "versionName": "0.2.1",
-  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.2.1-release.apk",
-  "sizeBytes": 4925112,
-  "sha256": "f97daf3c75a8b05d66191774f4ceb0a5fe8951712a3f65e64d82b2348a55128a",
+  "versionCode": 45,
+  "versionName": "0.2.5",
+  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.2.5-release.apk",
+  "sizeBytes": 4949648,
+  "sha256": "fda030f0104dcef10debbd54c2e729e91eeafeb270ee49731f57862f8d9832bc",
   "publishedAt": "2026-11-04",
   "notes": [
-    "修复：扫码页相机预览旋转方向（矩阵旋转角固定为 0，真机实测 +90 / -90 均不正确）"
+    "扫码点名防重复：同一名学生本次只记一次，重复扫自动跳过并提示",
+    "二次筛选：扫码只攒草稿不落库，点完成回传课堂点名复核，确认后保存考勤才一次性写入",
+    "改号方式二：考勤端新增「设置学号」，可更新名单或生成授权码，学生端扫一次即可改号",
+    "网页端补齐改号审批（申请码→扫同意码 / 扫授权码），摄像头扫码用本地 jsQR 离线解码"
   ],
   "mandatory": false
 }

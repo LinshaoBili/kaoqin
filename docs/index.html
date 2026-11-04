@@ -67,7 +67,14 @@
   button.ghost {
     background: #fff; color: var(--blue); border: 1.5px solid #d6e3f7; margin-top: 10px;
   }
-  button:disabled { opacity: .55; }
+  button:disabled { opacity: .55; cursor: default; }
+  textarea {
+    width: 100%; padding: 12px 14px; font-size: 13px; border-radius: 12px;
+    border: 1.5px solid var(--line); background: #fff; color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    resize: vertical; word-break: break-all; line-height: 1.5;
+  }
+  textarea:focus { outline: none; border-color: var(--blue); }
   .err { color: var(--danger); font-size: 12.5px; margin-top: 8px; min-height: 16px; }
   .hint { color: var(--muted); font-size: 12px; line-height: 1.65; margin-top: 14px; }
 
@@ -90,6 +97,12 @@
   }
   .tips { text-align: center; color: var(--muted); font-size: 12.5px; line-height: 1.7; margin-top: 14px; }
   .tips b { color: var(--ink); }
+  /* 冷静期提示：不是"说明文字"，是当前状态，所以给个卡片底而不是灰字 */
+  .lock {
+    color: var(--muted); font-size: 12.5px; line-height: 1.6; margin-top: 12px;
+    background: #fff; border: 1px dashed var(--line); border-radius: 12px;
+    padding: 10px 12px; text-align: center;
+  }
 
   /* ---------- 安装说明弹层 ---------- */
   .mask {
@@ -134,6 +147,8 @@
     .sheet { background: #161e27; }
     .mask { background: rgba(0, 0, 0, .65); }
     .qr-box { background: #fff; }
+    .lock { background: var(--card); border-color: var(--line); }
+    textarea { background: #111821; color: var(--ink); }
   }
 </style>
 </head>
@@ -177,7 +192,9 @@
       把屏幕对准老师的扫码框即可<br>
       <b>屏幕别自动锁屏</b>（页面已尽量保持常亮）
     </p>
+    <p class="lock hide" id="lockNote"></p>
     <button class="ghost" id="installBtn2">添加到桌面，像 App 一样用</button>
+    <button class="ghost" id="tokenBtn">备份 / 恢复学号</button>
   </section>
 
   <button class="ghost" id="installBtn">添加到桌面</button>
@@ -198,6 +215,7 @@
 
 <script src="vendor/qrcode.js"></script>
 <script src="qr-payload.js"></script>
+<script src="bind-store.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

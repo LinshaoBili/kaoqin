@@ -1,0 +1,16 @@
+{
+  "versionCode": 28,
+  "versionName": "0.0.28",
+  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.0.28-release.apk",
+  "sizeBytes": 42206508,
+  "sha256": "ec673c821504d703dfa0c19256ce77aeddf0754b5f5b5b56c68f0701c7d1d306",
+  "publishedAt": "2026-11-04",
+  "notes": [
+    "新增：应用内在线更新（检查 / 下载 / 校验 / 安装），支持 GitHub 等公网托管",
+    "新增：下载镜像（国内加速，开启镜像强制校验 sha256）",
+    "新增：安装前自动备份数据库，便于回退",
+    "新增：下载失败自动重试、实时速度与剩余时间",
+    "修复：下半节「迟到」不再继承"
+  ],
+  "mandatory": false
+}

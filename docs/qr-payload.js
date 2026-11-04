@@ -74,7 +74,6 @@
 
   var REQUEST_PREFIX = 'KQ2';
   var APPROVAL_PREFIX = 'KQ3';
-  var AUTHORIZE_PREFIX = 'KQ4';
 
   /** FNV-1a 32 位取高 16 位（与 ScanCode.checksum 同算法，作用于任意拼接串） */
   function fnv16(text) {
@@ -112,12 +111,6 @@
     return APPROVAL_PREFIX + '|' + o + '|' + n + '|' + token + '|' + fnv16(o + '|' + n + '|' + token);
   }
 
-  function authorize(newNo, token) {
-    var n = normalize(newNo);
-    if (!n || n.length > MAX_NO_LENGTH || !token) return '';
-    return AUTHORIZE_PREFIX + '|' + n + '|' + token + '|' + fnv16(n + '|' + token);
-  }
-
   function parseRequest(raw) {
     var text = String(raw == null ? '' : raw).trim();
     if (!text) return { ok: false, reason: 'notOurs' };
@@ -145,29 +138,13 @@
     return { ok: true, oldNo: o, newNo: n, token: token };
   }
 
-  function parseAuthorize(raw) {
-    var text = String(raw == null ? '' : raw).trim();
-    if (!text) return { ok: false, reason: 'notOurs' };
-    var parts = text.split('|');
-    if (parts.length !== 4) return { ok: false, reason: 'notOurs' };
-    if (parts[0].toUpperCase() !== AUTHORIZE_PREFIX) return { ok: false, reason: 'notOurs' };
-    var n = normalize(parts[1]);
-    var token = String(parts[2] || '').trim();
-    if (!n || n.length > MAX_NO_LENGTH || !token) return { ok: false, reason: 'emptyNo' };
-    if (String(parts[3] || '').trim().toUpperCase() !== fnv16(n + '|' + token)) return { ok: false, reason: 'badChecksum' };
-    return { ok: true, newNo: n, token: token };
-  }
-
   global.ChangeFlow = {
     REQUEST_PREFIX: REQUEST_PREFIX,
     APPROVAL_PREFIX: APPROVAL_PREFIX,
-    AUTHORIZE_PREFIX: AUTHORIZE_PREFIX,
     generateToken: generateToken,
     request: request,
     approval: approval,
-    authorize: authorize,
     parseRequest: parseRequest,
-    parseApproval: parseApproval,
-    parseAuthorize: parseAuthorize
+    parseApproval: parseApproval
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

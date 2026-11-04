@@ -1,0 +1,17 @@
+{
+  "versionCode": 36,
+  "versionName": "0.1.0",
+  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQinStudent-release.apk",
+  "sizeBytes": 1891453,
+  "sha256": "e9b10a2f0b71e46157f27d32b9cbe293ef8652101f38bec3367fb2453ee19db2",
+  "publishedAt": "2026-11-04",
+  "notes": [
+    "新增扫码点名：老师扫学生手机上的二维码，按上课时间自动判定已到/迟到/缺勤",
+    "扫码规则可自定义：课前/课后任意时间区间对应任意状态，内置 4 套预设与 6 个开关",
+    "新增学生端 APP「考勤码」：填学号即出码，无相机与存储权限，支持夜间模式与在线更新",
+    "新增网页版（苹果可用）：可添加到桌面，首次打开后断网也能显示二维码",
+    "管理页新增「学生端下载」二维码，学生扫码即得网页版或安卓安装包",
+    "扫码每扫一人立即写库，退出页面不丢失，相机不可用时可直接输入学号"
+  ],
+  "mandatory": false
+}

@@ -1,15 +1,12 @@
 {
-  "versionCode": 47,
-  "versionName": "0.3.1",
-  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.3.1-release.apk",
-  "sizeBytes": 4958348,
-  "sha256": "496b283fd85f0862648e8c1793ce6de747f927b498c6f8a1d372f56891c5d5b8",
+  "versionCode": 48,
+  "versionName": "0.3.2",
+  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.3.2-release.apk",
+  "sizeBytes": 4934044,
+  "sha256": "6dbfba43c585a756ed655cc8ad95d07f2f02479d06bd045887b4ecc35c319181",
   "publishedAt": "2026-11-04",
   "notes": [
-    "扫码点名页底部新增学生端网页版常驻二维码，学生没装 App 扫码即可用网页版",
-    "学生详情页取消滚动自动收缩筛选卡，改为仅手动展开收起",
-    "不参与考勤的预设理由移除「长期病假」",
-    "统计分析页上下滑卡顿优化（派生统计改缓存，滚动不再反复重算）"
+    "移除「设置学号」功能（入口、页面、路由、KQ4 授权码已全部清理），学号变更统一由「改号审批」承担（学生申请码 KQ2 → 老师同意码 KQ3），避免功能重复与混淆"
   ],
   "mandatory": false
 }

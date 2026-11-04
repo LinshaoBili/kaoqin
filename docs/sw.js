@@ -13,7 +13,7 @@
  *
  * 换版本时改下面的 CACHE 常量（发布脚本会自动写成本次版本号）。
  */
-const CACHE = 'kaoqin-v0.2.5';
+const CACHE = 'kaoqin-v0.3.4';
 
 const ASSETS = [
   './',

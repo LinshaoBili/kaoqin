@@ -124,6 +124,23 @@ build-tools/       # 验证脚本与发布工具（Python）
 二维码内容格式 `KQ1|<学号>|<4 位校验>`，两端共用 `shared/src/ScanCode.kt` 与 `docs/qr-payload.js`，
 并有 `build-tools/_device/ScanJvmCheck.java` 做「网页端生成 → 考勤端解码」的闭环验证。
 
+### 学号绑定：冷静期 + 加密落盘
+
+二维码就是签到凭证，所以「学号」不是随便能改的字段：
+
+- **绑定后 7 天内不可更改**（`BindRules.COOLDOWN_MS`）。改号 = 代签，成本太低了。
+  剩余时间由 `boundAt` 推算，并且 `lastSeen` 只增不减——**把手机时间往回拨也绕不过**。
+- **落盘是密文**：AES-256-GCM（PBKDF2-HMAC-SHA256 派生密钥），改一个字节就解不开。
+  防的是「文件管理器打开 → 记事本改个学号 → 存回去」这类最现实的操作。
+- **安卓端写在公共目录** `手机存储/Download/KaoQin/student-id.kqid`，
+  走 `MediaStore.Downloads` 插入，**不需要任何存储权限**，**卸载重装后文件仍在**。
+  文件管理器里能看见，但打不开——内容只有本应用能解。
+- **网页端**受浏览器限制写不了文件，改为：localStorage 存密文 + 「备份 / 恢复学号」
+  导出一串加密恢复码（可抄到备忘录，换设备/清了站点数据都能粘回来）。
+
+两端容器**逐字节兼容**（`shared/src/BindCodec.kt` ↔ `docs/bind-store.js`），
+`build-tools/_device/gen_bind_vectors.js` 生成、`BindJvmCheck.java` 解开，双向验证。
+
 ## 一次发布两个包
 
 `python build-tools/release_new.py --notes "..."` 会：改两端版本号 → 构建 4 个 APK →

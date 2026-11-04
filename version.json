@@ -2,11 +2,11 @@
   "versionCode": 50,
   "versionName": "0.3.4",
   "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.3.4-release.apk",
-  "sizeBytes": 5030436,
-  "sha256": "35eb433f2340dfe849a9094b6758061726b18d5bb77983c1015ac2b6910df17b",
+  "sizeBytes": 5032680,
+  "sha256": "b4ac60ffc5823576abce89cd79a9a9eff7aad298ba934971ae6a9c33a625d7d8",
   "publishedAt": "2026-11-04",
   "notes": [
-    "新增：考勤记录页支持导出考勤明细（CSV，按当前筛选导出每条记录，含姓名/学号/班级/签到签退时间/状态/出勤时长/异常说明，空值以 -- 占位）",
+    "新增：考勤记录页支持导出考勤明细（CSV，按课时分块，块内按 缺勤→早退→迟到→请假→已到 排序，含姓名/学号/班级/签到签退时间/状态/出勤时长/异常说明，空值以 -- 占位）",
     "调整：扫码打卡「标准」规则预设改为上课后 0–10 分钟迟到、10 分钟以上缺勤"
   ],
   "mandatory": false

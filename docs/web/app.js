@@ -302,11 +302,21 @@
     toast('已导出 ' + total + ' 行，可到考勤端「数据导入」使用');
   }
 
+  /**
+   * 导出文件。
+   *
+   * 手机/平板：走系统分享面板（iOS 上是唯一能把文件存进「文件」App 的路径）；
+   * **电脑：一律直接下载**——桌面 Chrome/Edge 也实现了 Web Share，但弹出来的是系统共享弹窗，
+   * 用户要的是「文件落到下载目录」，多一步纯属添乱（Windows 上还可能因为找不到可分享应用而失败）。
+   * 判定写在 logic.js 的 sharePolicy 里（纯函数，Node 可直跑断言）。
+   */
   function download(name, text, mime) {
     try {
       var blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' });
       var file = new File([blob], name, { type: mime || 'text/plain' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      var canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+      var policy = KQ.sharePolicy(navigator.userAgent, navigator.maxTouchPoints || 0, canShare);
+      if (policy === 'share') {
         navigator.share({ files: [file], title: name }).catch(function () { fallbackDownload(blob, name); });
       } else {
         fallbackDownload(blob, name);

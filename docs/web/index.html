@@ -70,6 +70,9 @@
   .chip.on[data-s=LATE]{background:var(--warn)}
   .chip.on[data-s=EARLY_LEAVE]{background:var(--purple)}
   .chip.on[data-s=SICK_LEAVE],.chip.on[data-s=PERSONAL_LEAVE],.chip.on[data-s=PUBLIC_LEAVE]{background:var(--blue)}
+  /* 筛选 chip 的「全部 / 请假」：不带具体状态色，但选中态必须有底色，否则白字白底看不见 */
+  .chip.on[data-s=ALL]{background:var(--ink)}
+  .chip.on[data-s=LEAVE]{background:var(--blue)}
   .chip.mute.on{background:var(--muted)}
   .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600}
   .badge.PRESENT{background:#e8f6ec;color:var(--ok)}
@@ -127,6 +130,8 @@
     .chip.on[data-s=ABSENT]{background:#a83232}
     .chip.on[data-s=LATE]{background:#a06500}
     .chip.on[data-s=EARLY_LEAVE]{background:#6a3aa0}
+    .chip.on[data-s=ALL]{background:#3a4859}
+    .chip.on[data-s=LEAVE]{background:#2f5c9e}
     .seg button.on{background:#212c38}
   }
 </style>

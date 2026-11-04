@@ -1,9 +1,9 @@
 {
-  "versionCode": 33,
-  "versionName": "0.0.33",
-  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.0.33-release.apk",
-  "sizeBytes": 4545060,
-  "sha256": "59039fa2ea6c3112cab9b27bdeffb638784072baa7987201a94b70c998b03f38",
+  "versionCode": 34,
+  "versionName": "0.0.34",
+  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.0.34-release.apk",
+  "sizeBytes": 4544944,
+  "sha256": "4fc354164d6cbefad9ca2762cf02845ad9d68458e5692f1c81f89d92165d550e",
   "publishedAt": "2026-11-04",
   "notes": [
     "新增新手引导：六步依次设置学期、周次、班级学生、上课时间、课程地点、复制格式",

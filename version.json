@@ -1,13 +1,17 @@
 {
-  "versionCode": 50,
-  "versionName": "0.3.4",
-  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.3.4-release.apk",
-  "sizeBytes": 5032680,
-  "sha256": "b4ac60ffc5823576abce89cd79a9a9eff7aad298ba934971ae6a9c33a625d7d8",
-  "publishedAt": "2026-11-04",
+  "versionCode": 53,
+  "versionName": "0.3.7",
+  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.3.7-release.apk",
+  "sizeBytes": 5085600,
+  "sha256": "4e52b66d04f6c3f98b201c24d1d0b19b0e4d2103a52659d0c6803620da80cce4",
+  "publishedAt": "2026-11-05",
   "notes": [
-    "新增：考勤记录页支持导出考勤明细（CSV，按课时分块，块内按 缺勤→早退→迟到→请假→已到 排序，含姓名/学号/班级/签到签退时间/状态/出勤时长/异常说明，空值以 -- 占位）",
-    "调整：扫码打卡「标准」规则预设改为上课后 0–10 分钟迟到、10 分钟以上缺勤"
+    "新增：连堂课——两节连上一起点名，每节按上/下半节拆分，四段（节1上/节1下/节2上/节2下）各自独立记录",
+    "新增：考勤记录与明细导出标注「连堂」，两节仍是独立的两条会话，统计人次口径不变",
+    "新增：网页版点名页支持连堂课，与考勤端同模型（pairId 关联），两端可互相导入导出",
+    "修复：网页版点名页地点无法选到具体课室，改为「上课地点 → 所属科室」两级选择",
+    "优化：网页版点名页学生默认缺勤（与考勤端一致），并支持按考勤状态筛选（默认缺勤）",
+    "兼容：旧数据无连堂字段，一律按单节课处理，旧备份导入不丢字段"
   ],
   "mandatory": false
 }

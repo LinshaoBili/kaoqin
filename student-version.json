@@ -1,16 +1,13 @@
 {
-  "versionCode": 38,
-  "versionName": "0.1.2",
+  "versionCode": 39,
+  "versionName": "0.1.3",
   "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQinStudent-release.apk",
-  "sizeBytes": 1912845,
-  "sha256": "a9823d44f6a78fb517bafca4034472c6598eb89c6b1ebb0844dab635845c22f0",
+  "sizeBytes": 1913557,
+  "sha256": "7523b8418107542db3865f7b83023e68a95822f57f74e58721f48f059e533b31",
   "publishedAt": "2026-11-04",
   "notes": [
-    "学生端学号绑定后 7 天内不可更改，绑定记录加密保存，卸载重装也不会丢",
-    "绑定记录写入 手机存储/Download/KaoQin/，无需存储权限，文件管理器可见但内容打不开",
-    "网页端新增备份/恢复加密绑定码，换手机或清了浏览器数据都能粘回",
-    "修复：扫码页相机预览被拉伸（按 AOSP 绘制顺序反向抵消非等比拉伸，并按取景框比例挑分辨率）",
-    "修复：预览缓冲区尺寸被视图尺寸覆盖导致的画面变形"
+    "修复：扫码页相机预览被转 90°、画面被拉伸（按系统真实绘制顺序抵消非等比拉伸与垂直翻转，改用完整变换矩阵）",
+    "学生端：学号锁定提示补上「可更改日期」，同时显示还剩几天和具体哪一天能改"
   ],
   "mandatory": false
 }

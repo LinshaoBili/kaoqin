@@ -1,13 +1,15 @@
 {
-  "versionCode": 46,
-  "versionName": "0.3.0",
-  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.3.0-release.apk",
-  "sizeBytes": 4953812,
-  "sha256": "a78c396810dd2cc350ede3b9af7f23aeafd11903752d205c607fe92d0feb8a67",
+  "versionCode": 47,
+  "versionName": "0.3.1",
+  "apkUrl": "https://github.com/LinshaoBili/kaoqin/releases/latest/download/KaoQin-0.3.1-release.apk",
+  "sizeBytes": 4958348,
+  "sha256": "496b283fd85f0862648e8c1793ce6de747f927b498c6f8a1d372f56891c5d5b8",
   "publishedAt": "2026-11-04",
   "notes": [
-    "扫码点名课程记忆：进入扫码页自动按「星期几+节次」匹配上一周同一时段的课程并选中（限定已选班级，不改走班级，手动选课程后不再覆盖）",
-    "版本一致性校验：发布时强制校验学生端与考勤端版本号一致、两端 APK 都已构建，任一端缺失或版本不一致即阻止发布"
+    "扫码点名页底部新增学生端网页版常驻二维码，学生没装 App 扫码即可用网页版",
+    "学生详情页取消滚动自动收缩筛选卡，改为仅手动展开收起",
+    "不参与考勤的预设理由移除「长期病假」",
+    "统计分析页上下滑卡顿优化（派生统计改缓存，滚动不再反复重算）"
   ],
   "mandatory": false
 }

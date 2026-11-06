@@ -8,7 +8,8 @@
  * 换版本时改 CACHE 常量（发布脚本会同步写成本次版本号）。
  * 前缀 `kaoqin-web-`：与旧版本（`kaoqin-teacher-`）区分，activate 时一并清掉旧缓存。
  */
-const CACHE = 'kaoqin-web-v0.3.7';
+// 版本号不变但资源有改动时用 -rN 后缀强制老客户端换缓存（cache-first，不改名换不掉）
+const CACHE = 'kaoqin-web-v0.3.8';
 
 const ASSETS = [
   './',

@@ -128,7 +128,33 @@
   /** 新建一名学生的默认标记：当天有生效假条 → 假条状态；否则**缺勤**（与考勤端一致，名单出现即全员缺勤） */
   function defaultMark(studentId) {
     var lv = KQ.activeLeave(DB.leaveNotes, studentId, editor.date);
-    return { first: lv ? lv.status : 'ABSENT', second: 'INHERIT', checkIn: '', leaveTime: '', byLeave: !!lv };
+    return {
+      first: lv ? lv.status : 'ABSENT', second: 'INHERIT',
+      checkIn: '', leaveTime: '', secondCheckIn: '', byLeave: !!lv
+    };
+  }
+
+  /**
+   * 状态变更自动补时刻时用的「现在」（HH:mm）。
+   * 点名日期不是今天（补录历史）时返回空串 = 不自动填，留空按节次默认计时长。
+   */
+  function autoNow() { return editor && editor.date === today() ? nowHHMM() : ''; }
+
+  /** 改上半节状态后同步时刻：到场类状态补/保留签到时刻，缺勤/请假清空签到与早退 */
+  function syncFirstTimes(m, status) {
+    m.checkIn = KQ.autoCheckIn(status, m.checkIn, autoNow());
+    if (!KQ.needsCheckIn(status)) m.leaveTime = '';
+  }
+
+  /**
+   * 改下半节后的时刻同步。
+   * [fromStatusClick] = 老师点的是具体状态（已到/迟到/请假…）→ 按生效状态补/清；
+   * 点「跟随上半节 / 不记录」= 撤销下半节的单独设置，时刻一并作废。
+   */
+  function syncSecondTimes(m, fromStatusClick) {
+    if (!fromStatusClick) { m.secondCheckIn = ''; return; }
+    var eff = KQ.resolveSecond(m.first, m.second);
+    m.secondCheckIn = KQ.autoCheckIn(eff, m.secondCheckIn, autoNow());
   }
 
   /** 名单变化时补齐 marks（已标记的不动） */
@@ -182,6 +208,7 @@
           second: sec ? KQ.markOf(first, sec.status) : KQ.markOf(first, null),
           checkIn: f ? (f.checkInTime || '') : '',
           leaveTime: f ? (f.leaveTime || '') : '',
+          secondCheckIn: sec ? (sec.checkInTime || '') : '',
           byLeave: false
         };
       });
@@ -241,7 +268,7 @@
         if (sec) {
           DB.records.push({
             id: nid(), sessionId: sid, studentId: s.id, status: sec, remark: '',
-            studentName: s.name, studentNo: s.studentNo, half: 2, checkInTime: '', leaveTime: ''
+            studentName: s.name, studentNo: s.studentNo, half: 2, checkInTime: m.secondCheckIn || '', leaveTime: ''
           });
           written++;
         }
@@ -625,7 +652,11 @@
         '<span class="badge ' + (secEff ? esc(secEff) : 'ABSENT') + '">' + esc(label(m.first)) + ' / ' +
         (secEff ? esc(label(secEff)) : '不记录') + '</span></div>' +
         (lv ? '<div class="m" style="color:var(--blue)">假条：' + esc(label(lv.status)) + ' · ' + esc(KQ.leaveSpanText(lv)) + '</div>' : '') +
-        (m.checkIn ? '<div class="m">签到 ' + esc(m.checkIn) + '</div>' : '') +
+        (function () {
+          // 当前半节自己的签到时刻：下半节显式设置过才有独立时刻
+          var shown = editor.half === 2 ? m.secondCheckIn : m.checkIn;
+          return shown ? '<div class="m">签到 ' + esc(shown) + '</div>' : '';
+        })() +
         '<div class="chips" style="margin-top:8px">';
 
       if (editor.half === 1) {
@@ -1199,10 +1230,13 @@
           if (editor.half === 1) {
             mm.first = st; mm.byLeave = false;
             // 一键改上半节时清掉下半节的单独设置，避免「已到 / 早退」这种没人表达过的组合
-            mm.second = st === 'EARLY_LEAVE' ? 'NOT_RECORDED' : 'INHERIT';
+            mm.second = 'INHERIT';
+            syncFirstTimes(mm, st);
+            mm.secondCheckIn = '';
           } else {
             var rr = KQ.applyToSecond(mm.first, st);
             mm.first = rr.first; mm.second = rr.second;
+            syncSecondTimes(mm, true);
           }
         });
         render(); break;
@@ -1211,15 +1245,20 @@
         var m = markOf(id); m.first = v; m.byLeave = false;
         if (v === 'EARLY_LEAVE') m.second = 'NOT_RECORDED';
         else if (m.second === 'NOT_RECORDED') m.second = 'INHERIT';
+        syncFirstTimes(m, v);
+        if (m.second === 'NOT_RECORDED') m.secondCheckIn = '';
         render(); break;
       }
       case 'setSecond': {
         var ms = markOf(id);
-        if (v === 'INHERIT' || v === 'NOT_RECORDED') ms.second = v;
-        else {
+        if (v === 'INHERIT' || v === 'NOT_RECORDED') {
+          ms.second = v;
+          syncSecondTimes(ms, false);
+        } else {
           // 与考勤端同一条规则：早退上移到上半节、与继承结果相同则回存 INHERIT
           var ap = KQ.applyToSecond(ms.first, v);
           ms.first = ap.first; ms.second = ap.second;
+          syncSecondTimes(ms, true);
         }
         render(); break;
       }
@@ -1241,6 +1280,7 @@
       case 'setLeave': {
         var m2 = markOf(id); m2.first = v; m2.byLeave = false;
         if (m2.second === 'NOT_RECORDED') m2.second = 'INHERIT';
+        syncFirstTimes(m2, v);
         closeSheet(); render(); break;
       }
       case 'saveEditor': saveEditor(); break;
@@ -1608,7 +1648,8 @@
     if (!s) { msg.textContent = '本班名单里没有学号 ' + parsed.studentNo; return; }
     var m = markOf(s.id);
     m.first = 'PRESENT'; m.checkIn = nowHHMM(); m.byLeave = false;
-    if (m.second === 'NOT_RECORDED') m.second = 'INHERIT';
+    if (m.second === 'NOT_RECORDED') { m.second = 'INHERIT'; m.secondCheckIn = ''; }
+
     stopScan(); closeSheet(); render();
     toast('已记 ' + s.name + ' 已到 ' + m.checkIn + (editor.doublePeriod ? '（第' + editor.period + '节）' : ''));
   }

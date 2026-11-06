@@ -91,6 +91,22 @@
     return secondRecorded === inh ? 'INHERIT' : secondRecorded;
   }
 
+  /**
+   * 半节签到时刻的自动填充（与 HalfTimeRules 同构）：
+   * - 只有「到场了」的状态才需要签到时刻（已到/迟到/早退）；
+   * - 空着才补 now，老师手填过的保留；
+   * - 缺勤/请假/不记录（null）一律清空，避免导出「缺勤 · 签到 08:12」。
+   */
+  function needsCheckIn(status) {
+    return !!status && status !== 'ABSENT' && !isLeave(status);
+  }
+
+  function autoCheckIn(status, current, now) {
+    if (!needsCheckIn(status)) return '';
+    if (current) return current;
+    return now || '';
+  }
+
   /** 点名页状态筛选（与 Android StatusFilter 一致：请假 = 病/事/公假合并） */
   var STATUS_FILTERS = [
     { key: 'ALL', label: '全部' },
@@ -627,6 +643,7 @@
     label: label, ruleLabel: ruleLabel, isLeave: isLeave, isAttended: isAttended,
     inheritedStatus: inheritedStatus, resolveSecond: resolveSecond, statusPriority: statusPriority,
     applyToSecond: applyToSecond, markOf: markOf,
+    needsCheckIn: needsCheckIn, autoCheckIn: autoCheckIn,
     STATUS_FILTERS: STATUS_FILTERS, matchesStatusFilter: matchesStatusFilter, filterLabel: filterLabel,
     // 时间与时长
     p2: p2, minutesOf: minutesOf, hhmmOf: hhmmOf, halfWindows: halfWindows, recordMinutes: recordMinutes,

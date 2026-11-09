@@ -40,6 +40,24 @@
   }
   function nid() { DB.seq = (DB.seq || 0) + 1; return DB.seq; }
 
+  /**
+   * 教学周次自动递增：设置里填过「这周第几周」后，记下当时的周一，之后每到周一自动 +1。
+   * 返回 true 表示周次变了（调用方据此决定要不要重绘）；老数据缺锚点时补一个，数字不变。
+   */
+  function syncWeek() {
+    var s = DB.settings, nowStr = today();
+    if (!s.weekAnchorMonday) {
+      s.weekAnchorMonday = KQ.mondayOfDate(nowStr);
+      s.weekAnchorValue = Math.max(1, Math.min(KQ.MAX_WEEK, +s.currentWeek || 1));
+      save();
+      return false;
+    }
+    var w = KQ.resolveWeek(s.weekAnchorValue, s.weekAnchorMonday, nowStr);
+    if (w !== s.currentWeek) { s.currentWeek = w; save(); return true; }
+    return false;
+  }
+  syncWeek();
+
   // ============================================================ 工具
   function $(s, r) { return (r || document).querySelector(s); }
   function esc(s) {
@@ -1109,7 +1127,8 @@
     return topbar('设置', counts) +
       '<div class="card"><h2>教学</h2>' +
       '<div class="f"><label class="f">学期名称</label><input type="text" data-change="semesterLabel" value="' + esc(s.semesterLabel) + '" placeholder="如 2025-2026学年第一学期"></div>' +
-      '<div class="f"><label class="f">当前周次</label><input type="number" min="1" max="60" data-change="currentWeek" value="' + (s.currentWeek || 1) + '"></div>' +
+      '<div class="f"><label class="f">当前周次</label><input type="number" min="1" max="' + KQ.MAX_WEEK + '" data-change="currentWeek" value="' + (s.currentWeek || 1) + '">' +
+      '<div class="m" style="margin-top:4px">每周一自动 +1：这周填第 10 周，下周一自动变成第 11 周，不用每周手改</div></div>' +
       '<div class="f"><label class="f">默认班级</label><select data-change="defaultClass">' +
       [[0, '不指定']].concat(DB.classes.map(function (c) { return [c.id, c.name]; })).map(function (o) {
         return '<option value="' + o[0] + '"' + (String(o[0]) === String(s.defaultClassId) ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
@@ -1205,7 +1224,13 @@
     else if (kind === 'sfCourse') { sf.courseId = +val; render(); }
     else if (kind === 'ruleCourse') { ruleCourse = +val; render(); }
     else if (kind === 'semesterLabel') { DB.settings.semesterLabel = val; save(); }
-    else if (kind === 'currentWeek') { DB.settings.currentWeek = Math.max(1, +val || 1); save(); }
+    else if (kind === 'currentWeek') {
+      // 手动改周次 = 重新校准锚点：以本周周一为基准，之后每周一自动 +1
+      DB.settings.currentWeek = Math.max(1, Math.min(KQ.MAX_WEEK, +val || 1));
+      DB.settings.weekAnchorValue = DB.settings.currentWeek;
+      DB.settings.weekAnchorMonday = KQ.mondayOfDate(today());
+      save();
+    }
     else if (kind === 'defaultClass') { DB.settings.defaultClassId = +val; save(); }
     else if (kind === 'weight') { setWeight(id, val); }
     else if (kind === 'recStatus') { saveRecordEdit(id); }
@@ -1702,6 +1727,12 @@
     if (b) goto('#/' + b.getAttribute('data-tab'));
   });
   $('#mask').addEventListener('click', function (e) { if (e.target === $('#mask')) closeSheet(); });
+  // 从后台切回来时重算周次：网页版常驻标签页，跨过周一不会重新加载页面
+  window.addEventListener('focus', function () { if (syncWeek()) render(); });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && syncWeek()) render();
+  });
+
   route = parseHash();
   render();
 })();

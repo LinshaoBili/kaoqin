@@ -456,7 +456,12 @@
   function blankDb() {
     return {
       v: 2, seq: 0,
-      settings: { semesterLabel: '', currentWeek: 1, defaultClassId: 0, score: defaultScoreConfig() },
+      settings: {
+        semesterLabel: '', currentWeek: 1, defaultClassId: 0, score: defaultScoreConfig(),
+        // 周次锚点：weekAnchorValue = 设定当周的周次，weekAnchorMonday = 那一周的周一
+        // （空串 = 老数据，首次启动就地补一个，用户看到的数字不变）
+        weekAnchorValue: 1, weekAnchorMonday: ''
+      },
       classes: [], students: [], courses: [], rules: [], locations: [], times: [],
       copies: [], leaveNotes: [], sessions: [], records: []
     };
@@ -470,6 +475,8 @@
     var st = d.settings || {};
     out.settings.semesterLabel = st.semesterLabel || '';
     out.settings.currentWeek = +st.currentWeek || 1;
+    out.settings.weekAnchorValue = +st.weekAnchorValue || 0;
+    out.settings.weekAnchorMonday = st.weekAnchorMonday || '';
     out.settings.defaultClassId = +st.defaultClassId || 0;
     out.settings.score = (st.score && st.score.mode) ? st.score : defaultScoreConfig();
     ['classes', 'students', 'courses', 'rules', 'locations', 'times', 'copies', 'leaveNotes', 'sessions', 'records']
@@ -633,9 +640,45 @@
     return isMobileUA(ua, maxTouchPoints) ? 'share' : 'download';
   }
 
+  // ------------------------------------------------------------ 教学周次（自动递增）
+  // 与考勤端 WeekCalendar 同口径：设置里填过「这周第几周」后，记下当时的周一当锚点，
+  // 之后每到周一自动 +1。存锚点而不是「开学日期」，填错一次只错一次。
+
+  /** 周次上限，与考勤端 WeekCalendar.MAX_WEEK 一致 */
+  var MAX_WEEK = 30;
+
+  /** 'yyyy-MM-dd' → 该周的周一（同格式）；非法输入返回 '' */
+  function mondayOfDate(str) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(str == null ? '' : str));
+    if (!m) return '';
+    var d = new Date(+m[1], +m[2] - 1, +m[3]);
+    if (isNaN(d.getTime())) return '';
+    var wd = (d.getDay() + 6) % 7;          // 周一 = 0
+    d.setDate(d.getDate() - wd);
+    return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+  }
+
+  /** 两个日期相差几周（各自先对齐到所在周的周一）；任一侧非法按 0 处理 */
+  function weeksBetween(fromMonday, toDate) {
+    var a = mondayOfDate(fromMonday), b = mondayOfDate(toDate);
+    if (!a || !b) return 0;
+    var da = new Date(a + 'T00:00:00'), db = new Date(b + 'T00:00:00');
+    // round 而不是 floor：跨夏令时会出现 ±1 小时的偏差，整除后不能直接取整
+    return Math.round((db - da) / 604800000);
+  }
+
+  /** 今天第几周：锚点周次 + 周差，收敛到 1..MAX_WEEK（缺锚点按锚点周次原样返回） */
+  function resolveWeek(anchorValue, anchorMonday, todayStr) {
+    var base = +anchorValue || 1;
+    if (!anchorMonday) return Math.min(MAX_WEEK, Math.max(1, base));
+    return Math.min(MAX_WEEK, Math.max(1, base + weeksBetween(anchorMonday, todayStr)));
+  }
+
   return {
     // 分享策略
     isMobileUA: isMobileUA, sharePolicy: sharePolicy,
+    // 周次（自动递增）
+    MAX_WEEK: MAX_WEEK, mondayOfDate: mondayOfDate, weeksBetween: weeksBetween, resolveWeek: resolveWeek,
     // 状态
     STATUSES: STATUSES, LEAVE: LEAVE, MAIN: MAIN, PRI: PRI, EMPTY: EMPTY,
     COLUMNS: COLUMNS, SCORE_COLUMNS: SCORE_COLUMNS,
